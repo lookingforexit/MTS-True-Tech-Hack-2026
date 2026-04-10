@@ -4,6 +4,17 @@ package agent.v1;
 
 option go_package = "backend/gen/agent/v1;agentv1";
 
+enum Stage {
+  STAGE_UNSPECIFIED = 0;
+  STAGE_ANALYZING = 1;
+  STAGE_RETRIEVING = 2;
+  STAGE_GENERATING = 3;
+  STAGE_VALIDATING = 4;
+  STAGE_CLARIFICATION_NEEDED = 5;
+  STAGE_DONE = 6;
+  STAGE_ERROR = 7;
+}
+
 message GenerateRequest {
   string session_id = 1;
   string task = 2;
@@ -12,12 +23,12 @@ message GenerateRequest {
 }
 
 message GenerateResponse {
-  string status = 1;
-  bool needs_clarification = 2;
-  string clarification_question = 3;
-  string code = 4;
+  Stage stage = 1;
+  string message = 2;
+  string code = 3;
+  string question = 4;
 }
 
 service AgentService {
-  rpc Generate(GenerateRequest) returns (GenerateResponse);
+  rpc Generate(stream GenerateRequest) returns (stream GenerateResponse);
 }
