@@ -1,0 +1,16 @@
+{
+  "id": "to_uppercase",
+  "description": "Преобразовать строку в верхний регистр",
+  "prompt": "Переведи строку text в верхний регистр.",
+  "context": {
+    "wf": {
+      "vars": {
+        "text": "Привет, мир!"
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "return string.upper(wf.vars.text)"
+  }
+}

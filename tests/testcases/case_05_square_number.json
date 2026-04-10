@@ -1,0 +1,13 @@
+{
+  "id": "square_number",
+  "description": "Добавить переменную с квадратом числа",
+  "prompt": "Добавь переменную с квадратом числа",
+  "context": {},
+  "reference": {
+    "type": "value",
+    "value": {
+      "num": "5",
+      "squared": 25
+    }
+  }
+}

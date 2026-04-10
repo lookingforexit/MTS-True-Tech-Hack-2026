@@ -1,0 +1,16 @@
+{
+  "id": "sum_array",
+  "description": "Посчитать сумму всех чисел в массиве",
+  "prompt": "Найди сумму всех чисел в массиве numbers.",
+  "context": {
+    "wf": {
+      "vars": {
+        "numbers": [10, 20, 30, 40]
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local sum = 0; for _, v in ipairs(wf.vars.numbers) do sum = sum + v end; return sum"
+  }
+}

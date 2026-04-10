@@ -1,0 +1,16 @@
+{
+  "id": "check_even",
+  "description": "Проверить, является ли число чётным",
+  "prompt": "Верни true, если число value чётное, иначе false.",
+  "context": {
+    "wf": {
+      "vars": {
+        "value": 42
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "return wf.vars.value % 2 == 0"
+  }
+}

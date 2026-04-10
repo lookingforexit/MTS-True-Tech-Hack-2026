@@ -1,0 +1,17 @@
+{
+  "id": "string_concat",
+  "description": "Объединить имя и фамилию через пробел",
+  "prompt": "Создай полное имя из переменных firstName и lastName, разделив их пробелом.",
+  "context": {
+    "wf": {
+      "vars": {
+        "firstName": "Иван",
+        "lastName": "Петров"
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "return wf.vars.firstName .. ' ' .. wf.vars.lastName"
+  }
+}

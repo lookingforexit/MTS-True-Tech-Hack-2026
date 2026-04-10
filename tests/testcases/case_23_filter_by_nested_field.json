@@ -1,0 +1,21 @@
+{
+  "id": "filter_by_nested_field",
+  "description": "Отфильтровать массив продуктов, оставив только те, у которых category.id == 5",
+  "prompt": "Из массива products выбери только те элементы, у которых category.id равен 5.",
+  "context": {
+    "wf": {
+      "vars": {
+        "products": [
+          {"name": "A", "category": {"id": 1}},
+          {"name": "B", "category": {"id": 5}},
+          {"name": "C", "category": {"id": 5}},
+          {"name": "D", "category": {"id": 3}}
+        ]
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local result = _utils.array.new(); for _, p in ipairs(wf.vars.products) do if p.category and p.category.id == 5 then table.insert(result, p) end end; return result"
+  }
+}

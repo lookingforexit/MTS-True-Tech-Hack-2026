@@ -1,0 +1,16 @@
+{
+  "id": "recursive_factorial",
+  "description": "Вычислить факториал числа n с проверкой на отрицательные значения",
+  "prompt": "Напиши функцию factorial, которая вычисляет факториал числа n. Если n отрицательное, верни nil. Примени её к переменной number и верни результат.",
+  "context": {
+    "wf": {
+      "vars": {
+        "number": 5
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "function factorial(n) if n < 0 then return nil elseif n <= 1 then return 1 else return n * factorial(n - 1) end end; return factorial(wf.vars.number)"
+  }
+}

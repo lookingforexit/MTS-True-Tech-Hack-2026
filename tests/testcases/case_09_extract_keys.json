@@ -1,0 +1,20 @@
+{
+  "id": "extract_keys",
+  "description": "Получить массив всех ключей из объекта config",
+  "prompt": "Верни массив, содержащий все ключи объекта config.",
+  "context": {
+    "wf": {
+      "vars": {
+        "config": {
+          "host": "localhost",
+          "port": 5432,
+          "ssl": true
+        }
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local keys = _utils.array.new(); for k, _ in pairs(wf.vars.config) do table.insert(keys, k) end; return keys"
+  }
+}

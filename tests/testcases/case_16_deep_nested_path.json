@@ -1,0 +1,24 @@
+{
+  "id": "deep_nested_path",
+  "description": "Получить значение по пути из вложенной структуры с возможными nil",
+  "prompt": "Из объекта data получи значение поля user.address.city. Если какого-либо уровня нет, верни 'Unknown'.",
+  "context": {
+    "wf": {
+      "vars": {
+        "data": {
+          "user": {
+            "name": "Alice",
+            "address": {
+              "city": "Moscow",
+              "zip": "101000"
+            }
+          }
+        }
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local node = wf.vars.data; if node and node.user and node.user.address then return node.user.address.city or 'Unknown' else return 'Unknown' end"
+  }
+}

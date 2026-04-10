@@ -1,0 +1,16 @@
+{
+  "id": "count_words",
+  "description": "Посчитать количество слов в строке",
+  "prompt": "Верни количество слов в переменной sentence (слова разделены пробелами).",
+  "context": {
+    "wf": {
+      "vars": {
+        "sentence": "Lua is a lightweight scripting language"
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local count = 0; for _ in string.gmatch(wf.vars.sentence, '%S+') do count = count + 1 end; return count"
+  }
+}

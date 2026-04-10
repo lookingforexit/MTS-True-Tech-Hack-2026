@@ -1,0 +1,16 @@
+{
+  "id": "validate_email",
+  "description": "Проверить, что строка похожа на email",
+  "prompt": "Верни true, если переменная email_str является валидным email (содержит '@' и '.' после '@'), иначе false.",
+  "context": {
+    "wf": {
+      "vars": {
+        "email_str": "test@example.com"
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local e = wf.vars.email_str; if type(e) ~= 'string' then return false end; local _, at_count = e:gsub('@', ''); if at_count ~= 1 then return false end; local local_part, domain = e:match('(.+)@(.+)'); if not local_part or local_part == '' or not domain or domain == '' then return false end; if not domain:find('.', 1, true) then return false end; return true"
+  }
+}

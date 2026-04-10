@@ -1,0 +1,21 @@
+{
+  "id": "group_by",
+  "description": "Сгруппировать массив записей по полю 'type'",
+  "prompt": "Сгруппируй элементы массива items по значению поля type. Результат должен быть объектом, где ключи — значения type, а значения — массивы соответствующих элементов.",
+  "context": {
+    "wf": {
+      "vars": {
+        "items": [
+          {"id": 1, "type": "A", "val": 10},
+          {"id": 2, "type": "B", "val": 20},
+          {"id": 3, "type": "A", "val": 30},
+          {"id": 4, "type": "C", "val": 40}
+        ]
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local groups = {}; for _, item in ipairs(wf.vars.items) do local t = item.type; if not groups[t] then groups[t] = _utils.array.new() end; table.insert(groups[t], item) end; return groups"
+  }
+}

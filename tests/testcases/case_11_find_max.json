@@ -1,0 +1,16 @@
+{
+  "id": "find_max",
+  "description": "Найти максимальное число в массиве",
+  "prompt": "Верни максимальное значение из массива prices.",
+  "context": {
+    "wf": {
+      "vars": {
+        "prices": [199.99, 299.99, 99.99, 499.99, 149.99]
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local max = wf.vars.prices[1]; for i = 2, #wf.vars.prices do if wf.vars.prices[i] > max then max = wf.vars.prices[i] end end; return max"
+  }
+}

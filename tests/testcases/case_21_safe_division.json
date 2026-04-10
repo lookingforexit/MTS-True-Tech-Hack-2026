@@ -1,0 +1,17 @@
+{
+  "id": "safe_division",
+  "description": "Разделить a на b, если b == 0 вернуть nil",
+  "prompt": "Вычисли результат деления a на b. Если b равно 0, верни nil.",
+  "context": {
+    "wf": {
+      "vars": {
+        "a": 10,
+        "b": 0
+      }
+    }
+  },
+  "reference": {
+    "type": "code",
+    "value": "local a, b = wf.vars.a, wf.vars.b; if b == 0 then return nil else return a / b end"
+  }
+}
