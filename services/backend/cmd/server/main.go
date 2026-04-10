@@ -12,7 +12,7 @@ func main() {
 
 	router := gin.Default()
 
-	router.POST("/generate")
+	router.POST("/generate", handler.Handler)
 
 	router.Run(fmt.Sprintf(":%s", cfg.Port))
 }
