@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package agent.v1;
+
+option go_package = "backend/gen/agent/v1;agentv1";
+
+message GenerateRequest {
+  string session_id = 1;
+  string task = 2;
+  string context_json = 3;
+  string mode = 4;
+}
+
+message GenerateResponse {
+  string status = 1;
+  bool needs_clarification = 2;
+  string clarification_question = 3;
+  string code = 4;
+}
+
+service AgentService {
+  rpc Generate(GenerateRequest) returns (GenerateResponse);
+}
