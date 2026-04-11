@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package llm.v1;
+
+option go_package = "backend/gen/llm/v1;llmv1";
+
+service LLMService {
+  rpc StartOrContinue(SessionRequest) returns (SessionResponse);
+
+  rpc AnswerClarification(AnswerRequest) returns (SessionResponse);
+
+  rpc GetSessionState(GetStateRequest) returns (SessionResponse);
+}
+
+message SessionRequest {
+  // Unique session ID (generate UUID client-side).
+  string session_id = 1;
+  // User's request text.
+  string request = 2;
+  // Optional additional context.
+  optional string context = 3;
+}
+
+message AnswerRequest {
+  string session_id = 1;
+  // User's answer to the clarification question.
+  string answer = 2;
+}
+
+message GetStateRequest {
+  string session_id = 1;
+}
+
+message SessionResponse {
+  string session_id = 1;
+  // Current phase of the session.
+  SessionPhase phase = 2;
+  // If phase == CLARIFICATION_NEEDED, this contains the question.
+  optional string clarification_question = 3;
+  // If phase == DONE, this contains the final code.
+  optional string code = 4;
+  // If phase == ERROR, this contains the error message.
+  optional string error = 5;
+  // Number of repair iterations performed.
+  int32 repair_count = 6;
+  // Validation output (stdout) if available.
+  optional string validation_output = 7;
+}
+
+enum SessionPhase {
+  PHASE_UNSPECIFIED = 0;
+  CLARIFICATION_NEEDED = 1;
+  CODE_GENERATED = 2;
+  DONE = 3;
+  ERROR = 4;
+}

@@ -10,15 +10,39 @@ services:
       - GIN_MODE=release
     restart: unless-stopped
 
-  agent:
-    build:
-      context: ./services/agent
-      dockerfile: Dockerfile
-    container_name: ocean-cucumber-agent
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ocean-cucumber-ollama
     ports:
-      - "8000:8000"
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+  llm:
+    build:
+      context: .
+      dockerfile: services/llm/Dockerfile
+    container_name: ocean-cucumber-llm
+    ports:
+      - "50051:50051"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - LUA_VALIDATOR_HOST=lua-validator
+      - LUA_VALIDATOR_PORT=50052
+      - MAX_REPAIRS=2
     depends_on:
-      - backend
+      - ollama
+      - lua-validator
+    restart: unless-stopped
+
+  lua-validator:
+    build:
+      context: .
+      dockerfile: services/lua-validator/Dockerfile
+    container_name: ocean-cucumber-lua-validator
+    ports:
+      - "50052:50052"
     restart: unless-stopped
 
   frontend:
@@ -30,5 +54,8 @@ services:
       - "8501:8501"
     depends_on:
       - backend
-      - agent
+      - llm
     restart: unless-stopped
+
+volumes:
+  ollama-data:
