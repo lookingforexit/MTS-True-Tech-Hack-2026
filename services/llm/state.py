@@ -6,7 +6,13 @@ from typing_extensions import TypedDict
 
 
 class PipelineState(TypedDict, total=False):
-    """State carried through the LangGraph pipeline."""
+    """State carried through the LangGraph pipeline.
+
+    Extended with session semantics:
+    - dialog_language: detected from the first user request ("ru" or "en").
+    - original_request: preserved across the whole session.
+    - clarification_history: optional log of clarification Q&A pairs.
+    """
 
     # Input
     session_id: str
@@ -30,6 +36,11 @@ class PipelineState(TypedDict, total=False):
     repair_count: int
     last_error: Optional[str]
 
+    # Session / language
+    dialog_language: str  # "ru" | "en"
+    original_request: str
+    clarification_history: Optional[list[dict]]  # [{"question": ..., "answer": ...}]
+
     # Output
-    phase: str  # "clarification_needed" | "code_generated" | "done" | "error"
+    phase: str  # "clarification_needed" | "done" | "error"
     error: Optional[str]

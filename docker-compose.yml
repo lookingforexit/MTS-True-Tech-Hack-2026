@@ -27,6 +27,7 @@ services:
     ports:
       - "50051:50051"
     environment:
+      - LLM_MODEL=qwen2.5-coder:1.5b-instruct-q4_K_M
       - OLLAMA_HOST=http://ollama:11434
       - LUA_VALIDATOR_HOST=lua-validator
       - LUA_VALIDATOR_PORT=50052
