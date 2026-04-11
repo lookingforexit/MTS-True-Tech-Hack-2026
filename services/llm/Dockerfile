@@ -1,4 +1,3 @@
-# Build from repository root: docker compose build llm
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -6,15 +5,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY services/llm/requirements.txt ./requirements.txt
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir uv
 
 COPY proto ./proto
 COPY services/llm ./services/llm
+COPY services/llm/pyproject.toml ./services/llm/pyproject.toml
+
+RUN uv pip install --system ./services/llm
 
 WORKDIR /app
 

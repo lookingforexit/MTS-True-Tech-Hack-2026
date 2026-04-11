@@ -1,24 +1,13 @@
-networks:
-  ocean-cucumber:
-    driver: bridge
-
 services:
   backend:
     build:
-      context: ./services/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/backend/Dockerfile
     container_name: ocean-cucumber-backend
     ports:
       - "8080:8080"
     environment:
       - GIN_MODE=release
-      - BACKEND_PORT=8080
-      - LLM_ADDR=llm:50051
-    depends_on:
-      llm:
-        condition: service_healthy
-    networks:
-      - ocean-cucumber
     restart: unless-stopped
 
   ollama:
@@ -28,35 +17,7 @@ services:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
-    networks:
-      - ocean-cucumber
     restart: unless-stopped
-
-  # Однократно тянет модель в volume Ollama; без этого ChatOllama отдаёт 404.
-  ollama-pull:
-    image: ollama/ollama:latest
-    container_name: ocean-cucumber-ollama-pull
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-    entrypoint: [ "/bin/sh", "-c" ]
-    command:
-      - |
-        set -e
-        for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
-          if ollama list >/dev/null 2>&1; then break; fi
-          sleep 2
-        done
-        for j in 1 2 3 4 5; do
-          ollama pull qwen2.5-coder:7b-instruct-q4_K_M && exit 0
-          sleep 5
-        done
-        exit 1
-    depends_on:
-      ollama:
-        condition: service_started
-    networks:
-      - ocean-cucumber
-    restart: "no"
 
   llm:
     build:
@@ -67,29 +28,11 @@ services:
       - "50051:50051"
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - LLM_MODEL=qwen2.5-coder:1.5b-instruct-q4_K_M
       - LUA_VALIDATOR_HOST=lua-validator
       - LUA_VALIDATOR_PORT=50052
-      - MAX_REPAIRS=2
     depends_on:
-      ollama:
-        condition: service_started
-      ollama-pull:
-        condition: service_completed_successfully
-      lua-validator:
-        condition: service_started
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          'python -c "import socket; s=socket.socket(); s.settimeout(2); s.connect((''127.0.0.1'',50051)); s.close()"',
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 18
-      start_period: 90s
-    networks:
-      - ocean-cucumber
+      - ollama
+      - lua-validator
     restart: unless-stopped
 
   lua-validator:
@@ -99,8 +42,6 @@ services:
     container_name: ocean-cucumber-lua-validator
     ports:
       - "50052:50052"
-    networks:
-      - ocean-cucumber
     restart: unless-stopped
 
   frontend:
@@ -110,15 +51,9 @@ services:
     container_name: ocean-cucumber-frontend
     ports:
       - "8501:8501"
-    environment:
-      - BACKEND_URL=http://backend:8080
     depends_on:
-      backend:
-        condition: service_started
-      llm:
-        condition: service_started
-    networks:
-      - ocean-cucumber
+      - backend
+      - llm
     restart: unless-stopped
 
 volumes:

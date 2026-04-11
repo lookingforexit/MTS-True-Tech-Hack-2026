@@ -32,12 +32,11 @@ from validator_client import LuaValidatorClient
 
 logger = logging.getLogger(__name__)
 
-MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder:7b-instruct-q4_K_M")
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
-MAX_REPAIRS = int(os.environ.get("MAX_REPAIRS", "2"))
-CANDIDATE_COUNT = int(os.environ.get("CANDIDATE_COUNT", "3"))
+MODEL= "qwen2.5-coder:7b-instruct-q4_K_M"
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST")
+CANDIDATE_COUNT = 3
+MAX_REPAIRS = 2
 
-# Deterministic LLM instances — temperature=0 for reproducibility.
 _llm_zero = ChatOllama(
     model=MODEL,
     base_url=OLLAMA_HOST,
@@ -60,13 +59,9 @@ _validator = LuaValidatorClient(
 )
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────
 
 def detect_language(text: str) -> str:
     """Detect whether *text* is predominantly Russian or English.
-
-    Counts Cyrillic vs Latin code-points.  If Cyrillic count >= Latin count
-    the language is ``"ru"``, otherwise ``"en"``.
     """
     cyrillic = sum(1 for ch in text if "\u0400" <= ch <= "\u04FF")
     latin = sum(1 for ch in text if "\u0041" <= ch <= "\u005A"
@@ -100,9 +95,9 @@ def _run_candidate(code: str, tests: list[dict]) -> dict:
     passed = 0
     total = len(tests)
 
-    for tc in tests:
-        stdin = tc.get("stdin", "")
-        expected = tc.get("expected_output", "")
+    for test_case in tests:
+        stdin = test_case.get("stdin", "")
+        expected = test_case.get("expected_output", "")
         try:
             result = _validator.validate(code, stdin=stdin)
             actual_output = (result.output or "").strip()
@@ -111,7 +106,7 @@ def _run_candidate(code: str, tests: list[dict]) -> dict:
                 passed += 1
             else:
                 failures.append({
-                    "test_name": tc.get("name", ""),
+                    "test_name": test_case.get("name", ""),
                     "stdin": stdin,
                     "expected": expected,
                     "actual": result.output or "",
@@ -119,7 +114,7 @@ def _run_candidate(code: str, tests: list[dict]) -> dict:
                 })
         except Exception as e:
             failures.append({
-                "test_name": tc.get("name", ""),
+                "test_name": test_case.get("name", ""),
                 "stdin": stdin,
                 "expected": expected,
                 "actual": "",
@@ -136,7 +131,7 @@ def _run_candidate(code: str, tests: list[dict]) -> dict:
     }
 
 
-# ── Nodes ────────────────────────────────────────────────────────────────
+# Nodes 
 
 def spec_node(state: PipelineState) -> PipelineState:
     """Spec-agent: normalize user request into JSON spec."""
@@ -237,7 +232,6 @@ def test_node(state: PipelineState) -> PipelineState:
         tests = parsed.get("tests", [])
     except (json.JSONDecodeError, KeyError) as e:
         logger.warning("Test-agent did not return valid JSON: %s — %s", text, e)
-        # Fallback: minimal test
         tests = [
             {
                 "name": "basic",

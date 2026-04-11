@@ -37,7 +37,6 @@ class PipelineState(TypedDict, total=False):
         7. Ranker           — pick best passing candidate (shortest, simplest)
     """
 
-    # ── Input / session ──────────────────────────────────────────────
     session_id: str
     request: str
     context: Optional[str]
@@ -45,8 +44,12 @@ class PipelineState(TypedDict, total=False):
     dialog_language: str  # "ru" | "en"
     original_request: str
     clarification_history: Optional[list[dict]]
+    # output
+    code: Optional[str]
+    phase: str  # "specifying" | "clarification_needed" | "testing" | "generating" | "validating" | "repairing" | "ranking" | "done" | "error"
+    error: Optional[str]
 
-    # ── Spec ─────────────────────────────────────────────────────────
+    # spec
     spec_json: Optional[str]          # Normalized JSON spec from Spec-agent
     missing_critical_fields: list[str]  # Fields the clarifier may ask about
 
@@ -75,6 +78,3 @@ class PipelineState(TypedDict, total=False):
     best_candidate_index: int
 
     # ── Output ───────────────────────────────────────────────────────
-    code: Optional[str]
-    phase: str  # "specifying" | "clarification_needed" | "testing" | "generating" | "validating" | "repairing" | "ranking" | "done" | "error"
-    error: Optional[str]
