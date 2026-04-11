@@ -5,7 +5,7 @@ import ollama
 from pydantic import BaseModel
 from prompts import CLARIFY_SYSTEM_PROMPT, GENERATE_SYSTEM_PROMPT, REPAIR_SYSTEM_PROMPT
 
-MODEL = "qwen2.5-coder:7b-instruct-q5_0"
+MODEL = "qwen2.5-coder:1.5b-instruct-q4_K_M"
 MAX_REPAIR_ITERATIONS = 1
 
 

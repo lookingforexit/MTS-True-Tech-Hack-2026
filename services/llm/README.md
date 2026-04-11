@@ -36,8 +36,8 @@ Max repair iterations controlled by `MAX_REPAIRS` env var (default: 2).
 
 ## Model
 
-- **Model**: `qwen2.5-coder:7b-instruct-q5_0`
-- Pulled from Ollama on first use
+- **Model**: `qwen2.5-coder:1.5b-instruct-q4_K_M`
+- Pulled from Ollama on first use (в `docker-compose` — сервис `ollama-pull`)
 
 ## gRPC Service
 
@@ -79,7 +79,7 @@ fmt.Println(resp.GetCode())
 | Var | Default | Description |
 |---|---|---|
 | `OLLAMA_HOST` | `http://ollama:11434` | Ollama endpoint |
-| `LLM_MODEL` | `qwen2.5-coder:7b-instruct-q5_0` | Model name |
+| `LLM_MODEL` | `qwen2.5-coder:1.5b-instruct-q4_K_M` | Model name |
 | `LUA_VALIDATOR_HOST` | `lua-validator` | Lua validator gRPC host |
 | `LUA_VALIDATOR_PORT` | `50052` | Lua validator gRPC port |
 | `MAX_REPAIRS` | `2` | Max repair iterations |

@@ -1,11 +1,15 @@
+import os
+
+import requests
 import streamlit as st
-import time
+
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080").rstrip("/")
 
 # Конфигурация страницы
 st.set_page_config(
     page_title="Ocean Cucumber — AI для генерации Lua",
     page_icon="🌊",
-    layout="centered"
+    layout="centered",
 )
 
 st.title("🌊🥒 Ocean Cucumber")
@@ -18,43 +22,32 @@ if "messages" not in st.session_state:
             "content": (
                 "👋 Привет! Я **Ocean Cucumber** — твой помощник для написания Lua-скриптов.\n\n"
                 "Опиши задачу (на русском или английском), и я сгенерирую готовый код в формате `lua{...}lua`."
-            )
+            ),
         }
     ]
 
-# --- Функция-заглушка вместо реального вызова бэкенда ---
-def mock_generate(prompt: str) -> dict:
-    """
-    Имитирует ответ агента.
-    Возвращает словарь с полями:
-        - code: строка с Lua-кодом (может быть пустой)
-        - question: уточняющий вопрос (если есть)
-    """
-    time.sleep(1.5)  # Имитация задержки генерации
+if "pending_session_id" not in st.session_state:
+    st.session_state.pending_session_id = None
 
-    lower_prompt = prompt.lower()
 
-    if "email" in lower_prompt or "последний" in lower_prompt:
-        return {
-            "code": '{"lastEmail": "lua{return wf.vars.emails[#wf.vars.emails]}lua"}',
-            "question": None
-        }
-    elif "факториал" in lower_prompt or "factorial" in lower_prompt:
-        return {
-            "code": '{"factorial": "lua{function factorial(n) if n<=1 then return 1 else return n*factorial(n-1) end end return factorial(5)}lua"}',
-            "question": None
-        }
-    elif "время" in lower_prompt or "time" in lower_prompt:
-        return {
-            "code": "",
-            "question": "В каком формате приходят исходные данные времени? (например, Unix timestamp или строка 'YYYYMMDD')"
+def call_backend(prompt: str) -> dict:
+    """POST /generate: обычный запрос или ответ на уточнение (если ждём session_id)."""
+    if st.session_state.pending_session_id:
+        payload = {
+            "session_id": st.session_state.pending_session_id,
+            "clarification_answer": prompt,
         }
     else:
-        # Заглушка по умолчанию
-        return {
-            "code": '{"result": "lua{-- Вставьте ваш код здесь\nreturn wf.vars.someValue}lua"}',
-            "question": "Это базовая заглушка. Уточните, какие данные нужно обработать и откуда их брать (wf.vars или wf.initVariables)?"
-        }
+        payload = {"prompt": prompt}
+
+    resp = requests.post(
+        f"{BACKEND_URL}/generate",
+        json=payload,
+        timeout=180,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
 
 # --- Отображение всех сообщений из истории ---
 for msg in st.session_state.messages:
@@ -63,35 +56,72 @@ for msg in st.session_state.messages:
 
 # --- Поле ввода для пользователя ---
 if prompt := st.chat_input("Опишите задачу для Lua-скрипта..."):
-    # Добавляем сообщение пользователя в историю и отображаем
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Генерация ответа ассистента
     with st.chat_message("assistant"):
-        with st.spinner("Sea Cucumber думает..."):
-            response_data = mock_generate(prompt)
+        try:
+            with st.spinner("Sea Cucumber думает..."):
+                data = call_backend(prompt)
+        except requests.HTTPError as e:
+            detail = str(e)
+            if e.response is not None:
+                try:
+                    body = e.response.json()
+                    detail = body.get("error", body.get("Error", detail))
+                except Exception:
+                    if e.response.text:
+                        detail = e.response.text[:500]
+            st.error(f"Ошибка бэкенда ({BACKEND_URL}): {detail}")
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"Ошибка HTTP: {detail}",
+                }
+            )
+            st.stop()
+        except requests.RequestException as e:
+            st.error(f"Не удалось связаться с бэкендом ({BACKEND_URL}): {e}")
+            st.session_state.messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"Ошибка сети: {e}",
+                }
+            )
+            st.stop()
 
         answer_parts = []
+        err = data.get("error")
+        code_str = data.get("code") or ""
+        question = data.get("question")
+        session_id = data.get("session_id")
 
-        if response_data.get("code"):
-            code_str = response_data["code"]
-            answer_parts.append("**Сгенерированный код:**")
-            # Показываем код в красивом блоке с подсветкой JSON
-            st.code(code_str, language="json")
-            answer_parts.append(code_str)
+        if err and not code_str and not question:
+            st.error(err)
+            answer_parts.append(err)
+            st.session_state.pending_session_id = None
+        else:
+            if err and (code_str or question):
+                st.warning(err)
 
-        if response_data.get("question"):
-            q = f"\n\n❓ **Уточнение:** {response_data['question']}"
-            st.markdown(q)
-            answer_parts.append(q)
+            if code_str:
+                answer_parts.append("**Сгенерированный код:**")
+                st.code(code_str, language="lua")
+                answer_parts.append(code_str)
+                st.session_state.pending_session_id = None
 
-        if not response_data.get("code") and not response_data.get("question"):
-            fallback = "Не удалось сгенерировать код. Попробуйте переформулировать задачу."
-            st.markdown(fallback)
-            answer_parts.append(fallback)
+            if question:
+                q = f"\n\n❓ **Уточнение:** {question}"
+                st.markdown(q)
+                answer_parts.append(q)
+                if session_id:
+                    st.session_state.pending_session_id = session_id
 
-        # Сохраняем полный текст ответа в историю
+            if not code_str and not question and not err:
+                fallback = "Пустой ответ от сервера. Попробуйте переформулировать задачу."
+                st.markdown(fallback)
+                answer_parts.append(fallback)
+
         full_answer = "".join(answer_parts).strip()
         st.session_state.messages.append({"role": "assistant", "content": full_answer})

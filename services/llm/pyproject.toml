@@ -1,3 +1,6 @@
+# Зависимости: pyproject.toml — источник правды для uv.
+# Обновить requirements.txt и uv.lock:
+#   uv lock && uv export --format requirements-txt --no-dev --no-hashes -o requirements.txt
 [project]
 name = "llm"
 version = "0.1.0"

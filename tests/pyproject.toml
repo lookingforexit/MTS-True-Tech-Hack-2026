@@ -1,13 +1,12 @@
-# Зависимости: pyproject.toml — источник правды для uv.
 # Обновить requirements.txt и uv.lock:
 #   uv lock && uv export --format requirements-txt --no-dev --no-hashes -o requirements.txt
 [project]
-name = "frontend"
+name = "task-repo-tests"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "Pytest integration tests (agent HTTP + validator HTTP)"
 requires-python = ">=3.11"
 dependencies = [
-    "streamlit>=1.56.0",
+    "pytest>=8.0.0",
     "requests>=2.31.0",
+    "pytest-html>=4.1.0",
 ]

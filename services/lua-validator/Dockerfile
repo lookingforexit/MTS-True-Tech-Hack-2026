@@ -1,31 +1,31 @@
+# Build from repository root: docker compose build lua-validator
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends lua5.4 && \
-    rm -rf /var/lib/apt/lists/* && \
-    pip install --no-cache-dir uv
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    lua5.4 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY services/lua-validator/pyproject.toml ./
+COPY services/lua-validator/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt
 
-RUN uv sync --no-dev
-
-# Copy proto
 COPY proto ./proto
-
-# Copy service source
 COPY services/lua-validator ./services/lua-validator
 
 WORKDIR /app
 
-# Generate Python gRPC stubs
-RUN uv run python -m grpc_tools.protoc \
+RUN python -m grpc_tools.protoc \
     -I ./proto \
     --python_out=./services/lua-validator \
     --grpc_python_out=./services/lua-validator \
     ./proto/api/lua_validator/v1/validator.proto
 
-# Move generated stubs to service root and fix imports
 RUN mv ./services/lua-validator/api/lua_validator/v1/validator_pb2.py ./services/lua-validator/ && \
     mv ./services/lua-validator/api/lua_validator/v1/validator_pb2_grpc.py ./services/lua-validator/ && \
     rm -rf ./services/lua-validator/api && \
@@ -35,4 +35,4 @@ WORKDIR /app/services/lua-validator
 
 EXPOSE 50052
 
-CMD ["uv", "run", "python", "main.py"]
+CMD ["python", "main.py"]

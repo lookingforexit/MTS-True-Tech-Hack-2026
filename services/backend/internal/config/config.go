@@ -5,14 +5,14 @@ import (
 )
 
 type Config struct {
-	Port      string
-	AgentAddr string
+	Port    string
+	LLMAddr string
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		Port:      getEnv("BACKEND_PORT", "5252"),
-		AgentAddr: getEnv("AGENT_ADDR", "6767"),
+		Port:    getEnv("BACKEND_PORT", "8080"),
+		LLMAddr: getEnv("LLM_ADDR", "localhost:50051"),
 	}
 }
 
