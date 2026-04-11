@@ -14,7 +14,7 @@ from validator_client import LuaValidatorClient
 
 logger = logging.getLogger(__name__)
 
-MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder:7b-instruct-q5_0")
+MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder:1.5b-instruct-q4_K_M")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 MAX_REPAIRS = int(os.environ.get("MAX_REPAIRS", "2"))
 
@@ -109,10 +109,12 @@ def validate_node(state: PipelineState) -> PipelineState:
             "Validation: success=%s exit=%d time=%dms",
             result.success, result.exit_code, result.exec_time_ms,
         )
+        # Combine stdout + stderr for full error context
+        full_output = (result.output or "") + (result.error or "")
         return {
             "validation_success": result.success,
             "validation_output": result.output,
-            "validation_error": result.error if not result.success else "",
+            "validation_error": full_output if not result.success else "",
         }
     except Exception as e:
         logger.error("Validation RPC failed: %s", e)

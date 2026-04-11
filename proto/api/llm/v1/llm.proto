@@ -4,15 +4,11 @@ package llm.v1;
 
 option go_package = "backend/gen/llm/v1;llmv1";
 
-// LLMService provides a stateful LangGraph pipeline for Lua code generation.
 service LLMService {
-  // StartOrContinue starts a new pipeline or continues an existing session.
   rpc StartOrContinue(SessionRequest) returns (SessionResponse);
 
-  // AnswerClarification answers the clarification question for a session.
   rpc AnswerClarification(AnswerRequest) returns (SessionResponse);
 
-  // GetSessionState returns the current state of a session.
   rpc GetSessionState(GetStateRequest) returns (SessionResponse);
 }
 
