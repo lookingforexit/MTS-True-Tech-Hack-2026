@@ -1,7 +1,7 @@
 [project]
 name = "llm"
 version = "0.1.0"
-description = "LLM service with LangGraph deterministic pipeline (clarify/generate/repair)"
+description = "LLM service with multi-agent LangGraph pipeline (spec/clarify/test/generate/validate/repair/rank)"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

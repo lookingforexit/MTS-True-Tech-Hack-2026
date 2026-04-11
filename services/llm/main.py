@@ -7,8 +7,7 @@ Session semantics
   stores the resulting state.
 * **Existing session waiting for clarification** — ``StartOrContinue`` with the
   same ``session_id`` treats ``request.request`` as the user's answer to the
-  pending clarification question and resumes the pipeline (equivalent to calling
-  ``AnswerClarification``).
+  pending clarification question and resumes the pipeline.
 * **Existing session already finished** (``done`` / ``error``) — the saved state
   is returned as-is; the pipeline is **not** restarted implicitly.  Clients that
   want a fresh run must generate a new ``session_id``.
@@ -78,12 +77,19 @@ def _make_initial_state(session_id: str, request_text: str,
         "clarification_answer": None,
         "is_ambiguous": False,
         "clarification_question": None,
+        "spec_json": None,
+        "missing_critical_fields": [],
+        "spec_approved": False,
+        "tests": None,
+        "candidates": None,
+        "candidate_count": 0,
         "code": None,
         "validation_success": False,
         "validation_output": None,
         "validation_error": None,
         "repair_count": 0,
         "last_error": None,
+        "best_candidate_index": 0,
         "phase": "running",
         "error": None,
         "dialog_language": dialog_language,
@@ -133,8 +139,7 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
                 # Session is finished — return saved state, do NOT restart.
                 return _state_to_response(session_id, prev)
 
-            # Any other phase (e.g. "running") — re-run the graph with the
-            # existing state (should not happen in normal flow, but handle it).
+            # Any other phase — re-run the graph with the existing state.
             try:
                 result = pipeline_graph.invoke(prev)
                 _save_session(session_id, result)
