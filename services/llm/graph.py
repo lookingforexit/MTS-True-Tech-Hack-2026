@@ -32,7 +32,7 @@ from validator_client import LuaValidatorClient
 
 logger = logging.getLogger(__name__)
 
-MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder:1.5b-instruct-q4_K_M")
+MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder:7b-instruct-q4_K_M")
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://ollama:11434")
 MAX_REPAIRS = int(os.environ.get("MAX_REPAIRS", "2"))
 CANDIDATE_COUNT = int(os.environ.get("CANDIDATE_COUNT", "3"))
@@ -42,7 +42,7 @@ _llm_zero = ChatOllama(
     model=MODEL,
     base_url=OLLAMA_HOST,
     temperature=0.2,
-    num_predict=1024,
+    num_predict=256,
     num_ctx=4096,
 )
 
@@ -50,7 +50,7 @@ _llm_generate = ChatOllama(
     model=MODEL,
     base_url=OLLAMA_HOST,
     temperature=0.8,
-    num_predict=2048,
+    num_predict=256,
     num_ctx=4096,
 )
 

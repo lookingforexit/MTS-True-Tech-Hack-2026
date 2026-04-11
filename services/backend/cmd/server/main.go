@@ -20,6 +20,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("grpc dial %s: %v", cfg.LLMAddr, err)
 	}
+
 	defer conn.Close()
 
 	llmClient := llmv1.NewLLMServiceClient(conn)

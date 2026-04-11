@@ -43,7 +43,7 @@ func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
 			return
 		}
 
-		rpcCtx, cancel := context.WithTimeout(ctx.Request.Context(), 120*time.Second)
+		rpcCtx, cancel := context.WithTimeout(ctx.Request.Context(), 900*time.Second)
 		defer cancel()
 
 		var resp *llmv1.SessionResponse

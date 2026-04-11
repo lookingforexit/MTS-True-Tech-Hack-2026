@@ -3,16 +3,16 @@ import os
 import requests
 import streamlit as st
 
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080").rstrip("/")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8080")
 
 # Конфигурация страницы
 st.set_page_config(
     page_title="Ocean Cucumber — AI для генерации Lua",
-    page_icon="🌊",
+    page_icon="🌊🔞s",
     layout="centered",
 )
 
-st.title("🌊🥒 Ocean Cucumber")
+st.title("🌊🥒🔞 Ocean Cucumber")
 
 # --- Инициализация истории сообщений ---
 if "messages" not in st.session_state:
@@ -43,7 +43,7 @@ def call_backend(prompt: str) -> dict:
     resp = requests.post(
         f"{BACKEND_URL}/generate",
         json=payload,
-        timeout=180,
+        timeout=900,
     )
     resp.raise_for_status()
     return resp.json()
