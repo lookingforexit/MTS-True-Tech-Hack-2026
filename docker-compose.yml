@@ -72,7 +72,7 @@ services:
       - llm
       - lua-validator
       - ollama
-    profiles: ["frontend"]
+    profiles: ["tests"]
 
 volumes:
   ollama-data:
