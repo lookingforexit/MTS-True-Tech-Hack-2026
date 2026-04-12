@@ -22,12 +22,17 @@ logger = logging.getLogger(__name__)
 # The sandbox wraps user code and serializes the RETURN VALUE via to_json().
 # So we return the wf table directly — the sandbox handles JSON serialization.
 LUA_INTROSPECTION_SCRIPT = r"""
--- Return wf table directly; the sandbox will serialize it via to_json()
-if wf ~= nil then
-    return wf
-else
-    return {}
+-- Build a clean copy of wf without runtime functions (like wf.get),
+-- and wrap it under the "wf" key so the LLM sees {"wf": {...}}
+local clean_wf = {}
+if wf then
+    for k, v in pairs(wf) do
+        if type(v) ~= "function" then
+            clean_wf[k] = v
+        end
+    end
 end
+return { wf = clean_wf }
 """
 
 

@@ -49,7 +49,9 @@ local function to_json(v)
     local t = type(v)
     if t == "nil" then return "null"
     elseif t == "boolean" or t == "number" then return tostring(v)
-    elseif t == "string" then return string.format("%q", v):gsub("\\\n", "\\n")
+    elseif t == "string" then
+        local s = string.format("%q", v):gsub("\\\n", "\\n")
+        return s
     elseif t == "table" then
         local is_arr, max = true, 0
         for k, _ in pairs(v) do
