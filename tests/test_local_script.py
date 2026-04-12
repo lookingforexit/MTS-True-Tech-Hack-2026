@@ -1,16 +1,12 @@
 import json
 import os
+import re
 import time
 import uuid
-import re
 import pytest
 
 from generated.api.llm.v1 import llm_pb2
 from generated.api.lua_validator.v1 import validator_pb2
-
-# ==========================================
-# 1. ЗАГРУЗКА И ПОДГОТОВКА ДАННЫХ
-# ==========================================
 
 def load_testcases():
     testcases_path = os.path.join(os.path.dirname(__file__), 'testcases.json')
@@ -20,89 +16,6 @@ def load_testcases():
         cases = json.load(f)
     return cases if isinstance(cases, list) else [cases]
 
-def to_lua_table(obj):
-    """Рекурсивно переводит Python dict/list в строку Lua-таблицы."""
-    if isinstance(obj, dict):
-        items = [f"[{json.dumps(str(k))}] = {to_lua_table(v)}" for k, v in obj.items()]
-        return "{" + ", ".join(items) + "}"
-    elif isinstance(obj, list):
-        return "{" + ", ".join(to_lua_table(v) for v in obj) + "}"
-    elif isinstance(obj, bool):
-        return "true" if obj else "false"
-    elif obj is None:
-        return "nil"
-    return json.dumps(obj)
-
-# ==========================================
-# 2. ИЗОЛИРОВАННАЯ LUA-ПЕСОЧНИЦА (ГЕНЕРАТОР)
-# ==========================================
-
-def build_lua_sandbox(context_data: dict, generated_code: str) -> str:
-    """
-    Создает обертку для выполнения Lua-кода. 
-    Вся "грязная" логика (моки, сериализация) спрятана здесь.
-    """
-    # Подготавливаем контекст (переменные wf)
-    wf_lua_table = to_lua_table(context_data.get("wf", {"vars": {}, "initVariables": {}}))
-    
-    # Очищаем маркеры Markdown от LLM
-    clean_code = re.sub(r"^(?:```lua|lua\{)\n?|\n?(?:```|\}lua)$", "", generated_code, flags=re.IGNORECASE).strip()
-
-    return f"""
--- 1. МОКИРУЕМ СРЕДУ (wf и _utils)
-wf = {wf_lua_table}
-wf.get = function(self, key) 
-    return (self.vars and self.vars[key]) or (self.initVariables and self.initVariables[key]) 
-end
-package.loaded.wf = wf
-
-_utils = {{
-    array = {{ new = function() return {{}} end, markAsArray = function(arr) return arr end }}
-}}
-
--- 2. СЕРИАЛИЗАТОР (Чтобы Python понял ответ)
-local function to_json(v)
-    local t = type(v)
-    if t == "nil" then return "null"
-    elseif t == "boolean" or t == "number" then return tostring(v)
-    elseif t == "string" then return string.format("%q", v):gsub("\\\n", "\\n")
-    elseif t == "table" then
-        local is_arr, max = true, 0
-        for k, _ in pairs(v) do
-            if type(k) ~= "number" or k < 1 or math.floor(k) ~= k then is_arr = false break end
-            if k > max then max = k end
-        end
-        local res = {{}}
-        if is_arr then
-            for i=1, max do table.insert(res, to_json(v[i])) end
-            return "[" .. table.concat(res, ",") .. "]"
-        else
-            for k, val in pairs(v) do table.insert(res, to_json(tostring(k))..":"..to_json(val)) end
-            return "{{" .. table.concat(res, ",") .. "}}"
-        end
-    end
-    return '"' .. tostring(v) .. '"'
-end
-
--- 3. ВЫПОЛНЯЕМ КОД МОДЕЛИ И ПЕРЕХВАТЫВАЕМ РЕЗУЛЬТАТ
-local function run_llm_code()
-{clean_code}
-end
-
-local success, result = pcall(run_llm_code)
-if not success then
-    print("RUNTIME_ERROR: " .. tostring(result))
-    os.exit(1)
-end
-
--- Выводим результат в консоль (stdout) с секретным маркером
-print("___RESULT___=" .. to_json(result))
-"""
-
-
-# ==========================================
-# 3. ОСНОВНОЙ КЛАСС ТЕСТИРОВАНИЯ
-# ==========================================
 
 class TestLocalScript:
     
@@ -137,11 +50,18 @@ class TestLocalScript:
         assert resp.code, "Сгенерированный код пуст!"
 
         # --- ЭТАП 2: ЗАПУСК В ВАЛИДАТОРЕ И ПРОВЕРКА РЕЗУЛЬТАТА ---
-        # 1. Заворачиваем код в нашу "песочницу"
-        sandbox_script = build_lua_sandbox(case.get("context", {}), resp.code)
+        # Отправляем код и JSON контекста в lua-validator
+        # Сервис сам создаст sandbox и настроит окружение
+        # CONTEXT_JSON - специальная переменная окружения для Lua sandbox
+        env_vars_json = json.dumps({
+            "CONTEXT_JSON": json.dumps(case.get("context", {}), ensure_ascii=False)
+        }, ensure_ascii=False)
 
-        # 2. Отправляем в контейнер lua-validator
-        val_req = validator_pb2.ValidateRequest(code=sandbox_script, timeout_ms=5000)
+        val_req = validator_pb2.ValidateRequest(
+            code=resp.code,
+            timeout_ms=5000,
+            env_vars=env_vars_json
+        )
         val_resp = validator_stub.Validate(val_req)
 
         # 3. Проверка на ошибки синтаксиса и падения во время выполнения (Runtime)

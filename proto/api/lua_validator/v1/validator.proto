@@ -12,10 +12,11 @@ service LuaValidatorService {
 
 message ValidateRequest {
   string code = 1;
-  // Optional stdin input for the script.
-  optional string stdin = 2;
   // Max execution time in milliseconds (default: 5000).
-  optional int32 timeout_ms = 3;
+  optional int32 timeout_ms = 2;
+  // JSON string with environment variables to set before execution.
+  // Keys and values must both be strings.
+  string env_vars = 3;
 }
 
 message ValidateResponse {

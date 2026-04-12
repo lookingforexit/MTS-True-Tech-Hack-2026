@@ -6,8 +6,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     lua5.4 \
+    lua5.4-dev \
+    luarocks \
     ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && luarocks --lua-version=5.4 install dkjson
 
 WORKDIR /app
 

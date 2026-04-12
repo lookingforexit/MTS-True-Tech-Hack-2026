@@ -3,7 +3,10 @@
 grpcio==1.80.0
     # via
     #   grpcio-tools
+    #   grpcio-reflection
     #   lua-validator
+grpcio-reflection==1.80.0
+    # via lua-validator
 grpcio-tools==1.80.0
     # via lua-validator
 protobuf==6.33.6
