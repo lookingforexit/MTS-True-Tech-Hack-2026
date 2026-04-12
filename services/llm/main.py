@@ -21,8 +21,8 @@ from threading import Lock
 import grpc
 from grpc_reflection.v1alpha import reflection
 
-import llm_pb2
-import llm_pb2_grpc
+from generated.api.llm.v1 import llm_pb2
+from generated.api.llm.v1 import llm_pb2_grpc
 from graph import detect_language, graph as pipeline_graph
 from state import PipelineState
 
@@ -70,11 +70,12 @@ def _make_initial_state(session_id: str, request_text: str,
                         context: str | None) -> PipelineState:
     """Build a fresh ``PipelineState`` for a brand-new session."""
     dialog_language = detect_language(request_text)
+    # Normalize empty string to None for downstream consistency.
+    normalized_context = context if context else None
     return {
         "session_id": session_id,
         "request": request_text,
-        "context": context,
-        "extracted_context": None,
+        "context": normalized_context,
         "clarification_answer": None,
         "clarification_question": None,
         "clarification_history": [],
@@ -147,11 +148,7 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
                 return _state_to_response(session_id, error_state)
 
         # ── New session ───────────────────────────────────────────────
-        if not request.context:
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details("context is required")
-            return llm_pb2.SessionResponse()
-
+        session_id = session_id or uuid.uuid4().hex
         initial_state = _make_initial_state(session_id, request.request, request.context)
 
         try:

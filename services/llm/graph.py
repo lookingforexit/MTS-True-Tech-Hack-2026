@@ -1,7 +1,7 @@
 """LangGraph workflow for the simplified multi-agent LLM pipeline.
 
 Pipeline stages:
-    1. Extract context from Lua environment (via introspection)
+    1. Prepare context — pass raw JSON context directly (no introspection)
     2. Spec-agent       — normalize user request + context into JSON spec
     3. Clarifier-agent  — approve spec or ask one clarification question
     4. Generator-agent  — produce Lua code
@@ -26,7 +26,6 @@ from prompts import (
 )
 from state import PipelineState
 from validator_client import LuaValidatorClient
-from lua_context_extractor import LuaContextExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +53,6 @@ _validator = LuaValidatorClient(
     host=os.environ.get("LUA_VALIDATOR_HOST", "lua-validator"),
     port=int(os.environ.get("LUA_VALIDATOR_PORT", "50052")),
 )
-
-_context_extractor = LuaContextExtractor(_validator)
 
 
 def detect_language(text: str) -> str:
@@ -89,28 +86,31 @@ def _parse_json_response(text: str) -> dict:
 # ── Nodes ──────────────────────────────────────────────────────────────
 
 def extract_context_node(state: PipelineState) -> PipelineState:
-    """Extract context from the Lua environment via introspection."""
+    """Pass raw context through — no introspection needed."""
     context_json = state.get("context")
     if not context_json:
-        logger.info("No context provided, skipping extraction")
-        return {"extracted_context": None}
+        logger.info("No context provided, skipping")
+        return {"raw_context": None}
 
-    logger.info("Extracting context from Lua environment...")
-    extracted = _context_extractor.extract(context_json)
-    logger.info("Context extraction complete: %s",
-                list(extracted.keys()) if isinstance(extracted, dict) else "non-dict result")
-    return {"extracted_context": extracted}
+    # Validate it's proper JSON
+    try:
+        parsed = json.loads(context_json)
+        logger.info("Context provided (%d bytes), passing through", len(context_json))
+        return {"raw_context": parsed}
+    except json.JSONDecodeError as e:
+        logger.warning("Context is not valid JSON: %s", e)
+        return {"raw_context": None}
 
 
 def spec_node(state: PipelineState) -> PipelineState:
-    """Spec-agent: normalize user request + Lua context into JSON spec."""
+    """Spec-agent: normalize user request + context into JSON spec."""
     request = state["request"]
-    extracted_context = state.get("extracted_context")
+    raw_context = state.get("raw_context")
 
     user_text = f"Request: {request}"
-    if extracted_context:
-        context_str = json.dumps(extracted_context, ensure_ascii=False, indent=2)
-        user_text += f"\n\nExtracted Lua context:\n{context_str}"
+    if raw_context:
+        context_str = json.dumps(raw_context, ensure_ascii=False, indent=2)
+        user_text += f"\n\nLua context:\n{context_str}"
     elif state.get("context"):
         user_text += f"\n\nAdditional context: {state['context']}"
 

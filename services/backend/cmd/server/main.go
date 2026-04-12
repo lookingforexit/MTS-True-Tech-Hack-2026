@@ -26,6 +26,7 @@ func main() {
 	llmClient := llmv1.NewLLMServiceClient(conn)
 
 	router := gin.Default()
+	router.GET("/health", handler.HealthHandler())
 	router.POST("/generate", handler.Handler(llmClient))
 
 	addr := fmt.Sprintf(":%s", cfg.Port)

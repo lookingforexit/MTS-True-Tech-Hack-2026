@@ -10,20 +10,15 @@ ENV UV_SYSTEM_PYTHON=1
 
 WORKDIR /app
 
-COPY tests/requirements.txt ./tests/requirements.txt
+COPY tests/pyproject.toml ./tests/pyproject.toml
 
-RUN uv pip install --no-cache-dir -r tests/requirements.txt
+RUN uv pip install --no-cache-dir ./tests
+
+# Copy pre-generated gRPC stubs (nested package structure)
+COPY tests/generated ./tests/generated
 
 COPY proto/ ./proto/
 COPY tests/ ./tests/
-
-RUN mkdir -p /app/tests/generated && \
-    touch /app/tests/generated/__init__.py && \
-    python -m grpc_tools.protoc -I=/app/proto \
-        --python_out=/app/tests/generated \
-        --grpc_python_out=/app/tests/generated \
-        /app/proto/api/llm/v1/llm.proto \
-        /app/proto/api/lua_validator/v1/validator.proto
 
 ENV PYTHONPATH=/app/tests/generated:/app/tests
 

@@ -9,16 +9,17 @@ class PipelineState(TypedDict, total=False):
     """State carried through the simplified LLM pipeline.
 
     Pipeline stages:
-        1. Spec-agent       — extract structured spec from request + Lua context
-        2. Clarifier-agent  — approve spec or ask one clarification question
-        3. Generator-agent  — produce Lua code (with repair loop on validation failure)
+        1. Prepare context  — parse raw JSON, pass through directly
+        2. Spec-agent       — extract structured spec from request + context
+        3. Clarifier-agent  — approve spec or ask one clarification question
+        4. Generator-agent  — produce Lua code (with repair loop on validation failure)
     """
 
     # ── Input ────────────────────────────────────────────────────────
     session_id: str
     request: str
-    context: Optional[str]            # Raw JSON context from backend
-    extracted_context: Optional[dict]  # Context extracted from Lua environment via introspection
+    context: Optional[str]            # Raw JSON context string from backend
+    raw_context: Optional[dict]       # Parsed JSON context (passed through, no introspection)
     dialog_language: str              # "ru" | "en"
 
     # ── Clarification ────────────────────────────────────────────────

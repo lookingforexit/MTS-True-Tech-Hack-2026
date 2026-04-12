@@ -12,8 +12,8 @@ from concurrent import futures
 import grpc
 from grpc_reflection.v1alpha import reflection
 
-import validator_pb2
-import validator_pb2_grpc
+from generated.api.lua_validator.v1 import validator_pb2
+from generated.api.lua_validator.v1 import validator_pb2_grpc
 
 logger = logging.getLogger(__name__)
 

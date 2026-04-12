@@ -13,6 +13,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// HealthHandler returns a simple health check response.
+func HealthHandler() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	}
+}
+
 type GenerateRequest struct {
 	Prompt              string          `json:"prompt"`
 	SessionID           string          `json:"session_id,omitempty"`
