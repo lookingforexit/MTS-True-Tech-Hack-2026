@@ -10,10 +10,26 @@ BACKEND_URL = os.environ.get("BACKEND_URL", "http://backend:8080")
 st.set_page_config(
     page_title="Ocean Cucumber — AI для генерации Lua",
     page_icon="🌊",
-    layout="wide",  # Делаем шире, чтобы и чат, и боковая панель смотрелись хорошо
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# --- Инициализация истории сообщений ---
+# --- Кастомный CSS для улучшения визуала ---
+st.markdown("""
+    <style>
+    /* Делаем шрифт в текстовом поле JSON моноширинным */
+    .stTextArea textarea {
+        font-family: 'Fira Code', 'Courier New', monospace !important;
+        font-size: 13px !important;
+    }
+    /* Слегка стилизуем кнопку очистки */
+    .btn-clear {
+        margin-top: 20px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- Инициализация состояния ---
 if "messages" not in st.session_state:
     st.session_state.messages =[
         {
@@ -28,54 +44,73 @@ if "messages" not in st.session_state:
 if "pending_session_id" not in st.session_state:
     st.session_state.pending_session_id = None
 
+# Состояния для умного сохранения JSON
+default_json = '{\n  "wf": {\n    "vars": {}\n  }\n}'
+if "saved_json" not in st.session_state:
+    st.session_state.saved_json = default_json
+if "context_data" not in st.session_state:
+    st.session_state.context_data = {"wf": {"vars": {}}}
+if "json_valid" not in st.session_state:
+    st.session_state.json_valid = True
+
 
 # ==========================================
 # БОКОВАЯ ПАНЕЛЬ: Ввод JSON-контекста
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Контекст (JSON)")
-    st.markdown("Укажите переменные, которые будут доступны модели:")
+    st.caption("Укажите переменные, которые будут доступны модели:")
     
-    default_json = '{\n  "wf": {\n    "vars": {}\n  }\n}'
-    context_input = st.text_area("JSON", value=default_json, height=400, label_visibility="collapsed")
+    # Текстовое поле всегда отображает текущий ввод пользователя
+    current_input = st.text_area(
+        "JSON", 
+        value=st.session_state.saved_json, 
+        height=350, 
+        label_visibility="collapsed"
+    )
     
-    context_data = None
-    is_json_valid = False
+    # Проверяем, изменил ли пользователь текст по сравнению с сохраненным
+    is_changed = current_input != st.session_state.saved_json
     
-    # Локальная проверка JSON на валидность
-    if context_input.strip():
-        try:
-            context_data = json.loads(context_input)
-            is_json_valid = True
-            st.success("✅ JSON валиден")
-        except json.JSONDecodeError as e:
-            st.error(f"❌ Ошибка JSON: {e}")
+    if is_changed:
+        st.warning("⚠️ Внесены изменения. Сохраните их!")
+        # Кнопка появляется только при изменениях
+        if st.button("💾 Сохранить JSON", type="primary", use_container_width=True):
+            try:
+                # Пытаемся распарсить
+                parsed = json.loads(current_input)
+                # Если успешно - обновляем состояния
+                st.session_state.context_data = parsed
+                st.session_state.saved_json = current_input
+                st.session_state.json_valid = True
+                # Перезагружаем интерфейс, чтобы скрыть кнопку и показать Success
+                st.rerun()
+            except json.JSONDecodeError as e:
+                st.session_state.json_valid = False
+                st.error(f"❌ Ошибка JSON: {e}")
+    else:
+        # Если изменений нет, просто показываем статус
+        if st.session_state.json_valid:
+            st.success("✅ JSON валиден и сохранен")
+        else:
+            st.error("❌ В сохраненном JSON есть ошибки")
 
 
 # ==========================================
 # ФУНКЦИЯ ОТПРАВКИ НА БЭКЕНД
 # ==========================================
 def call_backend(prompt: str) -> dict:
-    """POST /generate: отправляет промпт и (если это начало сессии) контекст."""
     if st.session_state.pending_session_id:
-        # Если мы отвечаем на уточняющий вопрос, шлем только session_id и ответ
         payload = {
             "session_id": st.session_state.pending_session_id,
             "clarification_answer": prompt,
         }
     else:
-        # Если это новый запрос, шлем промпт и наш JSON из боковой панели
         payload = {"prompt": prompt}
-        if is_json_valid and context_data:
-            # requests автоматически конвертирует context_data в JSON,
-            # а Go-бэкенд примет его в поле Context json.RawMessage
-            payload["context"] = context_data
+        if st.session_state.json_valid and st.session_state.context_data:
+            payload["context"] = st.session_state.context_data
 
-    resp = requests.post(
-        f"{BACKEND_URL}/generate",
-        json=payload,
-        timeout=900,
-    )
+    resp = requests.post(f"{BACKEND_URL}/generate", json=payload, timeout=900)
     resp.raise_for_status()
     return resp.json()
 
@@ -85,23 +120,40 @@ def call_backend(prompt: str) -> dict:
 # ==========================================
 st.title("🌊🥒 Ocean Cucumber")
 
-# Отображение всех сообщений из истории
+# Визуальная подсказка, если ждем ответа на вопрос
+if st.session_state.pending_session_id:
+    st.info("💡 Агент задал уточняющий вопрос. Пожалуйста, ответьте на него ниже.", icon="⏳")
+
+# Отображение всех сообщений из истории с кастомными аватарками
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    avatar = "🥒" if msg["role"] == "assistant" else "🧑‍💻"
+    with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
+# Динамический плейсхолдер для поля ввода
+input_placeholder = "Ответьте на уточнение..." if st.session_state.pending_session_id else "Опишите задачу для Lua-скрипта..."
+
 # Поле ввода для пользователя
-if prompt := st.chat_input("Опишите задачу для Lua-скрипта..."):
-    # Если JSON с ошибкой, не даем отправить новый запрос
-    if not st.session_state.pending_session_id and not is_json_valid:
-        st.error("Пожалуйста, исправьте ошибки в JSON слева перед отправкой запроса.")
+if prompt := st.chat_input(input_placeholder):
+    
+    # Валидации перед отправкой
+    if is_changed:
+        st.toast("Вы не сохранили JSON!", icon="⚠️")
+        st.error("Пожалуйста, нажмите «Сохранить JSON» в боковой панели перед отправкой запроса.")
+        st.stop()
+        
+    if not st.session_state.json_valid:
+        st.toast("Ошибка в JSON!", icon="❌")
+        st.error("В JSON есть ошибки. Исправьте их перед отправкой запроса.")
         st.stop()
 
+    # Добавляем сообщение пользователя
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+    # Обрабатываем ответ
+    with st.chat_message("assistant", avatar="🥒"):
         try:
             with st.spinner("Ocean Cucumber думает..."):
                 data = call_backend(prompt)
