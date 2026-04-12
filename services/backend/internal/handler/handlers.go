@@ -60,8 +60,7 @@ func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
 				sr.SessionId = req.SessionID
 			}
 			if len(req.Context) > 0 {
-				s := string(req.Context)
-				sr.Context = &s
+				sr.Context = string(req.Context)
 			}
 			resp, err = client.StartOrContinue(rpcCtx, sr)
 		}

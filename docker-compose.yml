@@ -18,6 +18,8 @@ services:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
+    devices:
+      - nvidia.com/gpu=all
     restart: unless-stopped
 
   llm:

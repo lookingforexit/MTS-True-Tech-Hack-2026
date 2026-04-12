@@ -7,6 +7,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv
 
@@ -41,6 +42,9 @@ RUN rm -rf ./services/llm/api
 
 WORKDIR /app/services/llm
 
+COPY services/llm/startup.sh ./startup.sh
+RUN chmod +x ./startup.sh
+
 EXPOSE 50051
 
-CMD ["python", "main.py"]
+CMD ["./startup.sh"]
