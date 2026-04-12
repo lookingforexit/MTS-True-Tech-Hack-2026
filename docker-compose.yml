@@ -44,6 +44,15 @@ services:
       - "50052:50052"
     restart: unless-stopped
 
+  lua-checker:
+    build:
+      context: .
+      dockerfile: services/lua-checker/Dockerfile
+    container_name: ocean-cucumber-lua-checker
+    ports:
+      - "50053:50053"
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./services/frontend
