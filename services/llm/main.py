@@ -74,6 +74,7 @@ def _make_initial_state(session_id: str, request_text: str,
         "session_id": session_id,
         "request": request_text,
         "context": context,
+        "extracted_context": None,
         "clarification_answer": None,
         "is_ambiguous": False,
         "clarification_question": None,
@@ -153,8 +154,12 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
                 return _state_to_response(session_id, error_state)
 
         # ── New session ───────────────────────────────────────────────
-        ctx = request.context if request.HasField("context") else None
-        initial_state = _make_initial_state(session_id, request.request, ctx)
+        if not request.context:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details("context is required")
+            return llm_pb2.SessionResponse()
+
+        initial_state = _make_initial_state(session_id, request.request, request.context)
 
         try:
             result = pipeline_graph.invoke(initial_state)

@@ -40,6 +40,7 @@ class PipelineState(TypedDict, total=False):
     session_id: str
     request: str
     context: Optional[str]
+    extracted_context: Optional[dict]  # Context extracted from Lua environment
     clarification_answer: Optional[str]
     dialog_language: str  # "ru" | "en"
     original_request: str

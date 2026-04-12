@@ -17,8 +17,8 @@ message SessionRequest {
   string session_id = 1;
   // User's request text.
   string request = 2;
-  // Optional additional context.
-  optional string context = 3;
+  // JSON context to be injected into the Lua environment (required).
+  string context = 3;
 }
 
 message AnswerRequest {

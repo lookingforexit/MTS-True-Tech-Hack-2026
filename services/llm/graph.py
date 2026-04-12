@@ -29,6 +29,7 @@ from prompts import (
 )
 from state import PipelineState
 from validator_client import LuaValidatorClient
+from lua_context_extractor import LuaContextExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,8 @@ _validator = LuaValidatorClient(
     host=os.environ.get("LUA_VALIDATOR_HOST", "lua-validator"),
     port=int(os.environ.get("LUA_VALIDATOR_PORT", "50052")),
 )
+
+_context_extractor = LuaContextExtractor(_validator)
 
 
 
@@ -99,7 +102,7 @@ def _run_candidate(code: str, tests: list[dict]) -> dict:
         stdin = test_case.get("stdin", "")
         expected = test_case.get("expected_output", "")
         try:
-            result = _validator.validate(code, stdin=stdin)
+            result = _validator.validate(code)
             actual_output = (result.output or "").strip()
             expected_stripped = expected.strip()
             if result.success and actual_output == expected_stripped:
@@ -131,16 +134,32 @@ def _run_candidate(code: str, tests: list[dict]) -> dict:
     }
 
 
-# Nodes 
+# Nodes
+
+def extract_context_node(state: PipelineState) -> PipelineState:
+    """Extract context from the Lua environment via introspection."""
+    context_json = state.get("context")
+    if not context_json:
+        logger.info("No context provided, skipping extraction")
+        return {"extracted_context": None}
+
+    logger.info("Extracting context from Lua environment...")
+    extracted = _context_extractor.extract(context_json)
+    logger.info("Context extraction complete: %s", list(extracted.keys()) if isinstance(extracted, dict) else "non-dict result")
+    return {"extracted_context": extracted}
+
 
 def spec_node(state: PipelineState) -> PipelineState:
     """Spec-agent: normalize user request into JSON spec."""
     request = state["request"]
-    context = state.get("context") or ""
+    extracted_context = state.get("extracted_context")
 
     user_text = f"Request: {request}"
-    if context:
-        user_text += f"\nAdditional context: {context}"
+    if extracted_context:
+        context_str = json.dumps(extracted_context, ensure_ascii=False, indent=2)
+        user_text += f"\nExtracted context from Lua environment:\n{context_str}"
+    elif state.get("context"):
+        user_text += f"\nAdditional context: {state['context']}"
 
     messages = [
         SystemMessage(content=SPEC_AGENT_PROMPT),
@@ -422,6 +441,7 @@ def build_graph():
     builder = StateGraph(PipelineState)
 
     # Add nodes
+    builder.add_node("extract_context", extract_context_node)
     builder.add_node("spec", spec_node)
     builder.add_node("clarifier", clarifier_node)
     builder.add_node("test", test_node)
@@ -431,7 +451,8 @@ def build_graph():
     builder.add_node("ranker", ranker_node)
 
     # Edges
-    builder.add_edge(START, "spec")
+    builder.add_edge(START, "extract_context")
+    builder.add_edge("extract_context", "spec")
     builder.add_edge("spec", "clarifier")
     builder.add_conditional_edges("clarifier", route_after_clarifier, {
         "clarification_needed": "clarification_needed",
