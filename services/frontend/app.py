@@ -1,13 +1,8 @@
 import json
 import os
-
 import requests
 import streamlit as st
-from transport import parse_transport_content
 
-# BACKEND_URL: support both Docker internal and local dev.
-# In Docker Compose the service is reachable as "http://backend:8080".
-# Locally the user should set BACKEND_URL=http://localhost:8080.
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://backend:8080")
 
 # --- Конфигурация страницы ---
@@ -15,9 +10,25 @@ st.set_page_config(
     page_title="Ocean Cucumber — AI для генерации Lua",
     page_icon="🌊",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# --- Инициализация истории сообщений ---
+# --- Кастомный CSS для улучшения визуала ---
+st.markdown("""
+    <style>
+    /* Делаем шрифт в текстовом поле JSON моноширинным */
+    .stTextArea textarea {
+        font-family: 'Fira Code', 'Courier New', monospace !important;
+        font-size: 13px !important;
+    }
+    /* Слегка стилизуем кнопку очистки */
+    .btn-clear {
+        margin-top: 20px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- Инициализация состояния ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
@@ -32,104 +43,75 @@ if "messages" not in st.session_state:
 if "pending_session_id" not in st.session_state:
     st.session_state.pending_session_id = None
 
+# Состояния для умного сохранения JSON
+default_json = '{\n  "wf": {\n    "vars": {}\n  }\n}'
+if "saved_json" not in st.session_state:
+    st.session_state.saved_json = default_json
+if "context_data" not in st.session_state:
+    st.session_state.context_data = {"wf": {"vars": {}}}
+if "json_valid" not in st.session_state:
+    st.session_state.json_valid = True
+
 
 # ==========================================
 # БОКОВАЯ ПАНЕЛЬ: Ввод JSON-контекста
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Контекст (JSON)")
-    st.markdown("Укажите переменные, которые будут доступны модели.\n"
-                "Можно оставить пустым — контекст необязателен.\n"
-                "Формат: `{\"wf\": {\"vars\": {...}, \"initVariables\": {...}}}`")
-
-    default_json = '{\n  "wf": {\n    "vars": {},\n    "initVariables": {}\n  }\n}'
-    context_input = st.text_area(
-        "JSON",
-        value=default_json,
-        height=400,
-        label_visibility="collapsed",
+    st.caption("Укажите переменные, которые будут доступны модели:")
+    
+    # Текстовое поле всегда отображает текущий ввод пользователя
+    current_input = st.text_area(
+        "JSON", 
+        value=st.session_state.saved_json, 
+        height=350, 
+        label_visibility="collapsed"
     )
-
-    # Determine context state:
-    #   - stripped empty → no context sent (None)
-    #   - valid JSON (including {}) → sent as-is
-    #   - invalid JSON → error shown, but request still allowed if user proceeds
-    context_data = None
-    context_raw_sent = False  # True when we actually include context in payload
-    is_json_valid = True
-    json_error_msg = ""
-
-    stripped = context_input.strip()
-    if stripped == "":
-        # Empty field — no context sent. This is fine.
-        is_json_valid = True
-        context_raw_sent = False
+    
+    # Проверяем, изменил ли пользователь текст по сравнению с сохраненным
+    is_changed = current_input != st.session_state.saved_json
+    
+    if is_changed:
+        st.warning("⚠️ Внесены изменения. Сохраните их!")
+        # Кнопка появляется только при изменениях
+        if st.button("💾 Сохранить JSON", type="primary", use_container_width=True):
+            try:
+                # Пытаемся распарсить
+                parsed = json.loads(current_input)
+                # Если успешно - обновляем состояния
+                st.session_state.context_data = parsed
+                st.session_state.saved_json = current_input
+                st.session_state.json_valid = True
+                # Перезагружаем интерфейс, чтобы скрыть кнопку и показать Success
+                st.rerun()
+            except json.JSONDecodeError as e:
+                st.session_state.json_valid = False
+                st.error(f"❌ Ошибка JSON: {e}")
     else:
-        try:
-            context_data = json.loads(stripped)
-            context_raw_sent = True
-            is_json_valid = True
-            st.success("✅ JSON валиден")
-        except json.JSONDecodeError as e:
-            json_error_msg = str(e)
-            is_json_valid = False
-            st.error(f"❌ Ошибка JSON: {e}")
-            st.info("Запрос будет отправлен без контекста. Исправьте JSON, чтобы добавить контекст.")
+        # Если изменений нет, просто показываем статус
+        if st.session_state.json_valid:
+            st.success("✅ JSON валиден и сохранен")
+        else:
+            st.error("❌ В сохраненном JSON есть ошибки")
 
 
 # ==========================================
 # ФУНКЦИЯ ОТПРАВКИ НА БЭКЕНД
 # ==========================================
-def call_backend(prompt: str, include_context: bool, ctx: dict | None) -> dict:
-    """POST /generate: отправляет промпт и опционально контекст."""
+def call_backend(prompt: str) -> dict:
     if st.session_state.pending_session_id:
-        # Отвечаем на уточняющий вопрос — только session_id + ответ
         payload = {
             "session_id": st.session_state.pending_session_id,
             "clarification_answer": prompt,
         }
     else:
-        # Новый запрос — prompt + optional context
         payload = {"prompt": prompt}
-        if include_context and ctx is not None:
-            payload["context"] = ctx
+        if st.session_state.json_valid and st.session_state.context_data:
+            payload["context"] = st.session_state.context_data
 
-    resp = requests.post(
-        f"{BACKEND_URL}/generate",
-        json=payload,
-        timeout=900,
-    )
+    resp = requests.post(f"{BACKEND_URL}/generate", json=payload, timeout=900)
     resp.raise_for_status()
     return resp.json()
-
-
-def _format_backend_error(detail: str, body: dict | None) -> str:
-    """Render backend errors without losing structured validation diagnostics."""
-    if not body:
-        return detail
-
-    error = body.get("error") or body.get("Error") or detail
-    validation_error = body.get("validation_error")
-    validation_output = body.get("validation_output")
-    repair_count = body.get("repair_count")
-
-    parts = [str(error)]
-    if validation_error:
-        parts.append(f"Validation error: {validation_error}")
-    if validation_output:
-        parts.append(f"Validation output: {validation_output}")
-    if repair_count is not None:
-        parts.append(f"Repair count: {repair_count}")
-    return "\n\n".join(parts)
-
-
-def check_backend_health() -> bool:
-    """Quick health check against the backend."""
-    try:
-        resp = requests.get(f"{BACKEND_URL}/health", timeout=5)
-        return resp.status_code == 200
-    except Exception:
-        return False
 
 
 # ==========================================
@@ -137,142 +119,92 @@ def check_backend_health() -> bool:
 # ==========================================
 st.title("🌊🥒 Ocean Cucumber")
 
-# Backend connectivity indicator
-if not check_backend_health():
-    st.warning(
-        f"⚠️ Бэкенд недоступен по адресу **{BACKEND_URL}**.\n\n"
-        f"Убедитесь, что сервис backend запущен.\n"
-        f"Для локального запуска: `BACKEND_URL=http://localhost:8080 streamlit run app.py`"
-    )
+# Визуальная подсказка, если ждем ответа на вопрос
+if st.session_state.pending_session_id:
+    st.info("💡 Агент задал уточняющий вопрос. Пожалуйста, ответьте на него ниже.", icon="⏳")
 
-# Отображение всех сообщений из истории
+# Отображение всех сообщений из истории с кастомными аватарками
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
+    avatar = "🥒" if msg["role"] == "assistant" else "🧑‍💻"
+    with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-# Поле ввода для пользователя
-if prompt := st.chat_input("Опишите задачу для Lua-скрипта..."):
-    # If context JSON is invalid, we still allow the request (without context).
-    # Show a warning but don't block.
-    if not st.session_state.pending_session_id and not is_json_valid:
-        st.warning(f"Контекст не будет отправлен из-за ошибки JSON: {json_error_msg}")
+# Динамический плейсхолдер для поля ввода
+input_placeholder = "Ответьте на уточнение..." if st.session_state.pending_session_id else "Опишите задачу для Lua-скрипта..."
 
+# Поле ввода для пользователя
+if prompt := st.chat_input(input_placeholder):
+    
+    # Валидации перед отправкой
+    if is_changed:
+        st.toast("Вы не сохранили JSON!", icon="⚠️")
+        st.error("Пожалуйста, нажмите «Сохранить JSON» в боковой панели перед отправкой запроса.")
+        st.stop()
+        
+    if not st.session_state.json_valid:
+        st.toast("Ошибка в JSON!", icon="❌")
+        st.error("В JSON есть ошибки. Исправьте их перед отправкой запроса.")
+        st.stop()
+
+    # Добавляем сообщение пользователя
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+    # Обрабатываем ответ
+    with st.chat_message("assistant", avatar="🥒"):
         try:
             with st.spinner("Ocean Cucumber думает..."):
-                data = call_backend(
-                    prompt=prompt,
-                    include_context=context_raw_sent,
-                    ctx=context_data,
-                )
+                data = call_backend(prompt=prompt)
         except requests.HTTPError as e:
             detail = str(e)
-            body = None
             if e.response is not None:
                 try:
                     body = e.response.json()
-                    detail = _format_backend_error(detail, body)
+                    detail = body.get("error", body.get("Error", detail))
                 except Exception:
                     detail = e.response.text[:500] if e.response.text else detail
             st.error(f"Ошибка бэкенда ({BACKEND_URL}): {detail}")
-            st.session_state.messages.append(
-                {"role": "assistant", "content": f"❌ **Ошибка HTTP:** {detail}"}
-            )
-            st.stop()
-        except requests.ConnectionError as e:
-            st.error(
-                f"Не удалось подключиться к бэкенду ({BACKEND_URL}).\n\n"
-                f"Проверьте, что backend запущен и адрес верный.\n"
-                f"Детали: {e}"
-            )
-            st.session_state.messages.append(
-                {"role": "assistant", "content": f"❌ **Ошибка подключения:** не удалось связаться с {BACKEND_URL}"}
-            )
-            st.stop()
-        except requests.Timeout as e:
-            st.error(
-                f"Превышено время ожидания ответа от бэкенда ({BACKEND_URL}).\n"
-                f"Генерация может занимать до 15 минут. Попробуйте позже."
-            )
-            st.session_state.messages.append(
-                {"role": "assistant", "content": "❌ **Таймаут:** бэкенд не ответил вовремя. Попробуйте снова."}
-            )
+            st.session_state.messages.append({"role": "assistant", "content": f"Ошибка HTTP: {detail}"})
             st.stop()
         except requests.RequestException as e:
             st.error(f"Неизвестная ошибка при запросе к бэкенду: {e}")
-            st.session_state.messages.append(
-                {"role": "assistant", "content": f"❌ **Ошибка сети:** {e}"}
-            )
+            st.session_state.messages.append({"role": "assistant", "content": f"Ошибка сети: {e}"})
             st.stop()
 
         # Разбор ответа от бэкенда
+        answer_parts =[]
         err = data.get("error")
         code_str = data.get("code") or ""
         question = data.get("question")
         session_id = data.get("session_id")
-        validation_error = data.get("validation_error")
-        validation_output = data.get("validation_output")
-        repair_count = data.get("repair_count", 0)
-        code_kind, code_content = parse_transport_content(code_str)
-        question_kind, question_content = parse_transport_content(question)
 
         if err and not code_str and not question:
-            # Pure error — nothing to show
-            error_content = f"❌ **Ошибка:** {err}"
-            if validation_error:
-                error_content += f"\n\n**Детали валидации:**\n```\n{validation_error}\n```"
-            if validation_output:
-                error_content += f"\n\n**Вывод валидации:**\n```\n{validation_output}\n```"
-            if repair_count > 0:
-                error_content += f"\n\nПопыток исправления: {repair_count}"
-            st.error(error_content)
-            st.session_state.messages.append(
-                {"role": "assistant", "content": error_content}
-            )
+            st.error(err)
+            answer_parts.append(f"**Ошибка:** {err}")
             st.session_state.pending_session_id = None
         else:
             if err and (code_str or question):
-                # Warning alongside useful content
-                warning_content = f"⚠️ **Предупреждение:** {err}"
-                if validation_error:
-                    warning_content += f"\n\n**Детали валидации:**\n```\n{validation_error}\n```"
-                st.warning(warning_content)
+                st.warning(err)
 
             if code_str:
-                if code_kind == "text":
-                    st.markdown(code_content)
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": code_content}
-                    )
-                else:
-                    rendered_code = code_content if code_kind == "lua" else code_str
-                    st.code(rendered_code, language="lua")
-                    st.session_state.messages.append(
-                        {"role": "assistant", "content": f"**Сгенерированный код:**\n\n```lua\n{rendered_code}\n```"}
-                    )
+                answer_parts.append("**Сгенерированный код:**")
+                st.code(code_str, language="lua")
+                # Для истории сохраняем код в markdown формате
+                answer_parts.append(f"```lua\n{code_str}\n```")
                 st.session_state.pending_session_id = None
 
             if question:
-                rendered_question = question_content if question_kind == "text" else question
-                if question_kind == "lua":
-                    st.code(question_content, language="lua")
-                    history_content = f"```lua\n{question_content}\n```"
-                else:
-                    st.markdown(f"❓ **Уточнение:** {rendered_question}")
-                    history_content = f"❓ **Уточнение:** {rendered_question}"
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": history_content}
-                )
+                q = f"\n\n❓ **Уточнение:** {question}"
+                st.markdown(q)
+                answer_parts.append(q)
                 if session_id:
                     st.session_state.pending_session_id = session_id
 
             if not code_str and not question and not err:
                 fallback = "Пустой ответ от сервера. Попробуйте переформулировать задачу."
                 st.markdown(fallback)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": fallback}
-                )
+                answer_parts.append(fallback)
+
+        full_answer = "\n".join(answer_parts).strip()
+        st.session_state.messages.append({"role": "assistant", "content": full_answer})

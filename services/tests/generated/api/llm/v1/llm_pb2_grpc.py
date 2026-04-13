@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from api.llm.v1 import llm_pb2 as api_dot_llm_dot_v1_dot_llm__pb2
+from services.tests.generated.api.llm.v1 import llm_pb2 as api_dot_llm_dot_v1_dot_llm__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__

@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from api.lua_validator.v1 import validator_pb2 as api_dot_lua__validator_dot_v1_dot_validator__pb2
+from services.tests.generated.api.lua_validator.v1 import validator_pb2 as api_dot_lua__validator_dot_v1_dot_validator__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
