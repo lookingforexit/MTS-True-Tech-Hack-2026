@@ -3,4 +3,4 @@
 *.python-version
 *gen
 *.idea
-tests/reports/*
+/services/tests/reports/*

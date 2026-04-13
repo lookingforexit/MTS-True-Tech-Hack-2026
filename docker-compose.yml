@@ -62,12 +62,12 @@ services:
   tests:
     build:
       context: .
-      dockerfile: tests/Dockerfile
+      dockerfile: ./services/tests/Dockerfile
     environment:
       - LLM_TARGET=llm:50051
       - VALIDATOR_TARGET=lua-validator:50052
     volumes:
-      - ./tests/reports:/app/tests/reports
+      - ./services/tests/reports:/app/tests/reports
     depends_on:
       - llm
       - lua-validator

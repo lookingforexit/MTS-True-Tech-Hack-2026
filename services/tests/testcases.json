@@ -1,0 +1,969 @@
+[
+  {
+    "id": "last_email",
+    "description": "Получить последний email из списка",
+    "prompt": "Из полученного списка email получи последний.",
+    "context": {
+      "wf": {
+        "vars": {
+          "emails": ["user1@example.com", "user2@example.com", "user3@example.com"]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return wf.vars.emails[#wf.vars.emails]"
+    },
+    "expected_value": "user3@example.com"
+  },
+  {
+    "id": "counter_increment",
+    "description": "Увеличить счётчик попыток на 1",
+    "prompt": "Увеличивай значение переменной try_count_n на каждой итерации",
+    "context": {
+      "wf": {
+        "vars": {
+          "try_count_n": 3
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return wf.vars.try_count_n + 1"
+    },
+    "expected_value": 4
+  },
+  {
+    "id": "clear_fields",
+    "description": "Очистить значения переменных ID, ENTITY_ID, CALL",
+    "prompt": "Для полученных данных из предыдущего REST запроса очисти значения переменных ID, ENTITY_ID, CALL",
+    "context": {
+      "wf": {
+        "vars": {
+          "RESTbody": {
+            "result": [
+              {"ID": 123, "ENTITY_ID": 456, "CALL": "example1", "OTHER": "keep"},
+              {"ID": 789, "ENTITY_ID": 101, "CALL": "example2", "EXTRA": "drop"}
+            ]
+          }
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local result = wf.vars.RESTbody.result; for _, entry in pairs(result) do for k, v in pairs(entry) do if k ~= 'ID' and k ~= 'ENTITY_ID' and k ~= 'CALL' then entry[k] = nil end end end; return result"
+    },
+    "expected_value":[
+      { "OTHER": "keep" },
+      { "EXTRA": "drop" }
+    ]
+  },
+  {
+    "id": "validate_email",
+    "description": "Проверить, что строка похожа на email",
+    "prompt": "Верни true, если переменная email_str является валидным email (содержит '@' и '.' после '@'), иначе false.",
+    "context": {
+      "wf": {
+        "vars": {
+          "email_str": "test@example.com"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local e = wf.vars.email_str; if type(e) ~= 'string' then return false end; local _, at_count = e:gsub('@', ''); if at_count ~= 1 then return false end; local local_part, domain = e:match('(.+)@(.+)'); if not local_part or local_part == '' or not domain or domain == '' then return false end; if not domain:find('.', 1, true) then return false end; return true"
+    },
+    "expected_value": true
+  },
+  {
+    "id": "safe_division",
+    "description": "Разделить a на b, если b == 0 вернуть nil",
+    "prompt": "Вычисли результат деления a на b. Если b равно 0, верни nil.",
+    "context": {
+      "wf": {
+        "vars": {
+          "a": 10,
+          "b": 0
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local a, b = wf.vars.a, wf.vars.b; if b == 0 then return nil else return a / b end"
+    },
+    "expected_value": null
+  },
+  {
+    "id": "group_by",
+    "description": "Сгруппировать массив записей по полю 'type'",
+    "prompt": "Сгруппируй элементы массива items по значению поля type. Результат должен быть объектом, где ключи — значения type, а значения — массивы соответствующих элементов.",
+    "context": {
+      "wf": {
+        "vars": {
+          "items": [
+            {"id": 1, "type": "A", "val": 10},
+            {"id": 2, "type": "B", "val": 20},
+            {"id": 3, "type": "A", "val": 30},
+            {"id": 4, "type": "C", "val": 40}
+          ]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local groups = {}; for _, item in ipairs(wf.vars.items) do local t = item.type; if not groups[t] then groups[t] = _utils.array.new() end; table.insert(groups[t], item) end; return groups"
+    },
+    "expected_value":{
+      "A":[
+        {"id": 1, "type": "A", "val": 10},
+        {"id": 3, "type": "A", "val": 30}
+      ],
+      "B":[
+        {"id": 2, "type": "B", "val": 20}
+      ],
+      "C":[
+        {"id": 4, "type": "C", "val": 40}
+      ]
+    }
+  },
+  {
+    "id": "filter_by_nested_field",
+    "description": "Отфильтровать массив продуктов, оставив только те, у которых category.id == 5",
+    "prompt": "Из массива products выбери только те элементы, у которых category.id равен 5.",
+    "context": {
+      "wf": {
+        "vars": {
+          "products": [
+            {"name": "A", "category": {"id": 1}},
+            {"name": "B", "category": {"id": 5}},
+            {"name": "C", "category": {"id": 5}},
+            {"name": "D", "category": {"id": 3}}
+          ]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local result = _utils.array.new(); for _, p in ipairs(wf.vars.products) do if p.category and p.category.id == 5 then table.insert(result, p) end end; return result"
+    },
+    "expected_value":[
+      {"name": "B", "category": {"id": 5}},
+      {"name": "C", "category": {"id": 5}}
+    ]
+  },
+  {
+    "id": "merge_objects",
+    "description": "Объединить два объекта, значения из второго перезаписывают первый",
+    "prompt": "Создай новый объект, содержащий все поля из obj1 и obj2. Если поле есть в обоих, использовать значение из obj2.",
+    "context": {
+      "wf": {
+        "vars": {
+          "obj1": {"a": 1, "b": 2, "c": 3},
+          "obj2": {"b": 20, "d": 4}
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local result = {}; for k,v in pairs(wf.vars.obj1) do result[k] = v end; for k,v in pairs(wf.vars.obj2) do result[k] = v end; return result"
+    },
+    "expected_value":{
+      "a": 1,
+      "b": 20,
+      "c": 3,
+      "d": 4
+    }
+  },
+  {
+    "id": "iso8601_to_unix",
+    "description": "Конвертировать строку ISO8601 в Unix timestamp (секунды) без использования os.time",
+    "prompt": "Преобразуй строку даты в формате ISO8601 (например, '2023-10-15T15:30:00Z') в Unix timestamp. Используй только базовые функции Lua, без os.time.",
+    "context": {
+      "wf": {
+        "initVariables": {
+          "recallTime": "2023-10-15T15:30:00Z"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local iso = wf.initVariables.recallTime; local pattern = '(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z'; local y,m,d,H,M,S = iso:match(pattern); y,m,d,H,M,S = tonumber(y),tonumber(m),tonumber(d),tonumber(H),tonumber(M),tonumber(S); local days = 0; for yr=1970,y-1 do days = days + ((yr%4==0 and yr%100~=0) or yr%400==0 and 366 or 365) end; local month_days = {31,28,31,30,31,30,31,31,30,31,30,31}; for mo=1,m-1 do days = days + month_days[mo]; if mo==2 and ((y%4==0 and y%100~=0) or y%400==0) then days = days+1 end end; days = days + d - 1; return days*86400 + H*3600 + M*60 + S"
+    },
+    "expected_value": 1697383800
+  },
+  {
+    "id": "recursive_factorial",
+    "description": "Вычислить факториал числа n с проверкой на отрицательные значения",
+    "prompt": "Напиши функцию factorial, которая вычисляет факториал числа n. Если n отрицательное, верни nil. Примени её к переменной number и верни результат.",
+    "context": {
+      "wf": {
+        "vars": {
+          "number": 5
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "function factorial(n) if n < 0 then return nil elseif n <= 1 then return 1 else return n * factorial(n - 1) end end; return factorial(wf.vars.number)"
+    },
+    "expected_value": 120
+  },
+  {
+    "id": "init_variables_priority",
+    "description": "Если значение есть в initVariables, использовать его, иначе брать из vars",
+    "prompt": "Верни значение параметра timeout. Сначала проверь wf.initVariables, если там нет — возьми из wf.vars. Если нигде нет, верни 30.",
+    "context": {
+      "wf": {
+        "initVariables": {
+          "timeout": 60
+        },
+        "vars": {
+          "timeout": 45,
+          "other": "data"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return wf.initVariables.timeout or wf.vars.timeout or 30"
+    },
+    "expected_value": 60
+  },
+  {
+    "id": "mark_as_array",
+    "description": "Преобразовать одиночный объект в массив из одного элемента с помощью _utils.array.markAsArray",
+    "prompt": "Убедись, что переменная item всегда является массивом. Если это не массив, преврати в массив из одного элемента с помощью _utils.array.markAsArray.",
+    "context": {
+      "wf": {
+        "vars": {
+          "item": {"id": 1, "name": "single"}
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local item = wf.vars.item; if type(item) ~= 'table' or (getmetatable(item) or {}).__is_array == nil then item = {item} end; _utils.array.markAsArray(item); return item"
+    },
+    "expected_value": [
+      {"id": 1, "name": "single"}
+    ]
+  },
+  {
+    "id": "deep_nested_path",
+    "description": "Получить значение по пути из вложенной структуры с возможными nil",
+    "prompt": "Из объекта data получи значение поля user.address.city. Если какого-либо уровня нет, верни 'Unknown'.",
+    "context": {
+      "wf": {
+        "vars": {
+          "data": {
+            "user": {
+              "name": "Alice",
+              "address": {
+                "city": "Moscow",
+                "zip": "101000"
+              }
+            }
+          }
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local node = wf.vars.data; if node and node.user and node.user.address then return node.user.address.city or 'Unknown' else return 'Unknown' end"
+    },
+    "expected_value": "Moscow"
+  },
+  {
+    "id": "count_words",
+    "description": "Посчитать количество слов в строке",
+    "prompt": "Верни количество слов в переменной sentence (слова разделены пробелами).",
+    "context": {
+      "wf": {
+        "vars": {
+          "sentence": "Lua is a lightweight scripting language"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local count = 0; for _ in string.gmatch(wf.vars.sentence, '%S+') do count = count + 1 end; return count"
+    },
+    "expected_value": 6
+  },
+  {
+    "id": "unique_elements",
+    "description": "Удалить дубликаты из массива",
+    "prompt": "Верни массив, содержащий только уникальные значения из items (без повторений).",
+    "context": {
+      "wf": {
+        "vars": {
+          "items": [1, 2, 3, 2, 1, 4, 5, 4]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local seen = {}; local result = _utils.array.new(); for _, v in ipairs(wf.vars.items) do if not seen[v] then seen[v] = true; table.insert(result, v) end end; return result"
+    },
+    "expected_value": [1, 2, 3, 4, 5]
+  },
+  {
+    "id": "timestamp_to_date",
+    "description": "Преобразовать Unix timestamp в строку даты",
+    "prompt": "Преобразуй unix timestamp (в секундах) из переменной ts в строку формата 'YYYY-MM-DD'.",
+    "context": {
+      "wf": {
+        "vars": {
+          "ts": 1712563200
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return os.date('%Y-%m-%d', wf.vars.ts)"
+    },
+    "expected_value": "2024-04-08"
+  },
+  {
+    "id": "merge_arrays",
+    "description": "Объединить два массива в один",
+    "prompt": "Создай новый массив, содержащий сначала все элементы из array1, затем все элементы из array2.",
+    "context": {
+      "wf": {
+        "vars": {
+          "array1": ["a", "b", "c"],
+          "array2": [1, 2, 3]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local result = _utils.array.new(); for _, v in ipairs(wf.vars.array1) do table.insert(result, v) end; for _, v in ipairs(wf.vars.array2) do table.insert(result, v) end; return result"
+    },
+    "expected_value": ["a", "b", "c", 1, 2, 3]
+  },
+  {
+    "id": "find_max",
+    "description": "Найти максимальное число в массиве",
+    "prompt": "Верни максимальное значение из массива prices.",
+    "context": {
+      "wf": {
+        "vars": {
+          "prices": [199.99, 299.99, 99.99, 499.99, 149.99]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local max = wf.vars.prices[1]; for i = 2, #wf.vars.prices do if wf.vars.prices[i] > max then max = wf.vars.prices[i] end end; return max"
+    },
+    "expected_value": 499.99
+  },
+  {
+    "id": "to_uppercase",
+    "description": "Преобразовать строку в верхний регистр",
+    "prompt": "Переведи строку text в верхний регистр.",
+    "context": {
+      "wf": {
+        "vars": {
+          "text": "Привет, мир!"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return string.upper(wf.vars.text)"
+    },
+    "expected_value": "ПРИВЕТ, МИР!"
+  },
+  {
+    "id": "extract_keys",
+    "description": "Получить массив всех ключей из объекта config",
+    "prompt": "Верни массив, содержащий все ключи объекта config.",
+    "context": {
+      "wf": {
+        "vars": {
+          "config": {
+            "host": "localhost",
+            "port": 5432,
+            "ssl": true
+          }
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local keys = _utils.array.new(); for k, _ in pairs(wf.vars.config) do table.insert(keys, k) end; return keys"
+    },
+    "expected_value": ["host", "port", "ssl"]
+  },
+  {
+    "id": "check_even",
+    "description": "Проверить, является ли число чётным",
+    "prompt": "Верни true, если число value чётное, иначе false.",
+    "context": {
+      "wf": {
+        "vars": {
+          "value": 42
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return wf.vars.value % 2 == 0"
+    },
+    "expected_value": true
+  },
+  {
+    "id": "string_concat",
+    "description": "Объединить имя и фамилию через пробел",
+    "prompt": "Создай полное имя из переменных firstName и lastName, разделив их пробелом.",
+    "context": {
+      "wf": {
+        "vars": {
+          "firstName": "Иван",
+          "lastName": "Петров"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return wf.vars.firstName .. ' ' .. wf.vars.lastName"
+    },
+    "expected_value": "Иван Петров"
+  },
+  {
+    "id": "sum_array",
+    "description": "Посчитать сумму всех чисел в массиве",
+    "prompt": "Найди сумму всех чисел в массиве numbers.",
+    "context": {
+      "wf": {
+        "vars": {
+          "numbers": [10, 20, 30, 40]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local sum = 0; for _, v in ipairs(wf.vars.numbers) do sum = sum + v end; return sum"
+    },
+    "expected_value": 100
+  },
+  {
+    "id": "filter_discount",
+    "description": "Отфильтровать элементы, где есть Discount или Markdown",
+    "prompt": "Отфильтруй элементы из массива, чтобы включить только те, у которых есть значения в полях Discount или Markdown.",
+    "context": {
+      "wf": {
+        "vars": {
+          "parsedCsv": [
+            {"SKU": "A001", "Discount": "10%", "Markdown": ""},
+            {"SKU": "A002", "Discount": "", "Markdown": "5%"},
+            {"SKU": "A003", "Discount": null, "Markdown": null},
+            {"SKU": "A004", "Discount": "", "Markdown": ""}
+          ]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local result = _utils.array.new(); local items = wf.vars.parsedCsv; for _, item in ipairs(items) do if (item.Discount ~= '' and item.Discount ~= nil) or (item.Markdown ~= '' and item.Markdown ~= nil) then table.insert(result, item) end end; return result"
+    },
+    "expected_value": [
+      {"SKU": "A001", "Discount": "10%", "Markdown": ""},
+      {"SKU": "A002", "Discount": "", "Markdown": "5%"}
+    ]
+  },
+  {
+  "id": "clarification_test",
+  "prompt": "Отфильтруй массив.",
+  "context": { "wf": { "vars": { "data":[1, 2, 3, 4] } } },
+  "clarification_answers":["Оставь только четные числа"],
+  "expected_value": [2, 4]
+  },
+  {
+  "id": "refinement_test",
+  "prompt": "Сложи a и b.",
+  "context": { "wf": { "vars": { "a": 5, "b": 10 } } },
+  "refinements": ["А теперь умножь результат сложения на 2"],
+  "expected_value": 30
+  },
+  {
+  "id": "empty_context_test",
+  "prompt": "Верни строку 'Hello World'",
+  "context": {},
+  "expected_value": "Hello World"
+  },
+  {
+    "id": "celsius_to_fahrenheit",
+    "description": "Математика: Перевод температуры",
+    "prompt": "Переведи температуру из градусов Цельсия (celsius) в Фаренгейты. Формула: F = C * 9/5 + 32.",
+    "context": {
+      "wf": {
+        "vars": {
+          "celsius": 25
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return wf.vars.celsius * 9 / 5 + 32"
+    },
+    "expected_value": 77
+  },
+  {
+    "id": "reverse_string",
+    "description": "Строки: Разворот строки",
+    "prompt": "Разверни строку text в обратном порядке.",
+    "context": {
+      "wf": {
+        "vars": {
+          "text": "hello"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return string.reverse(wf.vars.text)"
+    },
+    "expected_value": "olleh"
+  },
+  {
+    "id": "palindrome_check",
+    "description": "Строки: Проверка на палиндром",
+    "prompt": "Верни true, если строка word является палиндромом (читается одинаково слева направо и справа налево), иначе false. Игнорируй регистр.",
+    "context": {
+      "wf": {
+        "vars": {
+          "word": "Radar"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local w = string.lower(wf.vars.word); return w == string.reverse(w)"
+    },
+    "expected_value": true
+  },
+  {
+    "id": "array_min_value",
+    "description": "Массивы: Найти минимальное значение",
+    "prompt": "Найди минимальное число в массиве numbers. Если массив пуст, верни nil.",
+    "context": {
+      "wf": {
+        "vars": {
+          "numbers": [10, 5, 8, 2, 9]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local nums = wf.vars.numbers; if #nums == 0 then return nil end; local min = nums[1]; for i=2,#nums do if nums[i] < min then min = nums[i] end end; return min"
+    },
+    "expected_value": 2
+  },
+  {
+    "id": "array_average",
+    "description": "Математика: Среднее арифметическое массива",
+    "prompt": "Посчитай среднее арифметическое всех чисел в массиве grades. Если массив пустой, верни 0.",
+    "context": {
+      "wf": {
+        "vars": {
+          "grades":[4, 5, 4, 3, 5]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local g = wf.vars.grades; if #g == 0 then return 0 end; local sum = 0; for _, v in ipairs(g) do sum = sum + v end; return sum / #g"
+    },
+    "expected_value": 4.2
+  },
+  {
+    "id": "count_occurrences",
+    "description": "Массивы: Подсчет вхождений элемента",
+    "prompt": "Посчитай, сколько раз значение target_value встречается в массиве items.",
+    "context": {
+      "wf": {
+        "vars": {
+          "items": ["apple", "banana", "apple", "orange"],
+          "target_value": "apple"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local count = 0; for _, v in ipairs(wf.vars.items) do if v == wf.vars.target_value then count = count + 1 end end; return count"
+    },
+    "expected_value": 2
+  },
+  {
+    "id": "safe_nested_extraction",
+    "description": "Объекты: Безопасное извлечение вложенного поля",
+    "prompt": "Верни значение wf.vars.user.profile.age. Если какого-то уровня нет или age отсутствует, верни -1.",
+    "context": {
+      "wf": {
+        "vars": {
+          "user": {
+            "profile": {}
+          }
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local u = wf.vars.user; if u and u.profile and u.profile.age then return u.profile.age else return -1 end"
+    },
+    "expected_value": -1
+  },
+  {
+    "id": "fizzbuzz_logic",
+    "description": "Логика: FizzBuzz для одного числа",
+    "prompt": "Если число n делится на 3 и на 5, верни 'FizzBuzz'. Если только на 3 — 'Fizz'. Если только на 5 — 'Buzz'. Иначе верни само число.",
+    "context": {
+      "wf": {
+        "vars": {
+          "n": 15
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local n = wf.vars.n; if n % 15 == 0 then return 'FizzBuzz' elseif n % 3 == 0 then return 'Fizz' elseif n % 5 == 0 then return 'Buzz' else return n end"
+    },
+    "expected_value": "FizzBuzz"
+  },
+  {
+    "id": "leap_year",
+    "description": "Логика: Високосный год",
+    "prompt": "Верни true, если год year високосный, иначе false. Год високосный, если он делится на 4, но не делится на 100, либо делится на 400.",
+    "context": {
+      "wf": {
+        "vars": {
+          "year": 2024
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local y = wf.vars.year; return (y % 4 == 0 and y % 100 ~= 0) or (y % 400 == 0)"
+    },
+    "expected_value": true
+  },
+  {
+    "id": "flatten_2d_array",
+    "description": "Массивы: Превратить 2D массив в 1D",
+    "prompt": "Преобразуй двумерный массив matrix (массив массивов) в одномерный массив.",
+    "context": {
+      "wf": {
+        "vars": {
+          "matrix": [[1, 2], [3, 4], [5]]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local res = {}; for _, row in ipairs(wf.vars.matrix) do for _, val in ipairs(row) do table.insert(res, val) end end; return res"
+    },
+    "expected_value": [1, 2, 3, 4, 5]
+  },
+  {
+    "id": "split_string_by_comma",
+    "description": "Строки: Разделение строки по разделителю",
+    "prompt": "Раздели строку csv_line по запятым и верни массив полученных подстрок.",
+    "context": {
+      "wf": {
+        "vars": {
+          "csv_line": "apple,banana,cherry"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local res = {}; for s in string.gmatch(wf.vars.csv_line, '([^,]+)') do table.insert(res, s) end; return res"
+    },
+    "expected_value": ["apple", "banana", "cherry"]
+  },
+  {
+    "id": "sort_dictionary_keys",
+    "description": "Объекты: Получить и отсортировать ключи",
+    "prompt": "Получи все ключи из объекта person, отсортируй их по алфавиту и верни в виде массива.",
+    "context": {
+      "wf": {
+        "vars": {
+          "person": {"name": "John", "age": 30, "city": "London"}
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local keys = {}; for k, _ in pairs(wf.vars.person) do table.insert(keys, k) end; table.sort(keys); return keys"
+    },
+    "expected_value": ["age", "city", "name"]
+  },
+  {
+    "id": "capitalize_words",
+    "description": "Строки: Заглавные буквы",
+    "prompt": "Переведи первую букву каждого слова в строке title в верхний регистр. Остальные буквы не трогай.",
+    "context": {
+      "wf": {
+        "vars": {
+          "title": "hello world from lua"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return string.gsub(wf.vars.title, '(%a)([%w_]*)', function(first, rest) return string.upper(first) .. rest end)"
+    },
+    "expected_value": "Hello World From Lua"
+  },
+  {
+    "id": "filter_empty_values",
+    "description": "Массивы: Удаление пустых строк и nil",
+    "prompt": "Удали из массива data все элементы, которые равны nil или пустой строке ''.",
+    "context": {
+      "wf": {
+        "vars": {
+          "data":["valid", "", null, "text", ""]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local res = {}; for _, v in ipairs(wf.vars.data) do if v ~= nil and v ~= '' then table.insert(res, v) end end; return res"
+    },
+    "expected_value": ["valid", "text"]
+  },
+  {
+    "id": "validate_array_of_numbers",
+    "description": "Типы: Валидация массива чисел",
+    "prompt": "Верни true, если массив values содержит только числа. Если есть хоть один элемент другого типа, верни false. Если массив пуст, верни true.",
+    "context": {
+      "wf": {
+        "vars": {
+          "values":[1, 2, 3.5, "4", 5]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "for _, v in ipairs(wf.vars.values) do if type(v) ~= 'number' then return false end end; return true"
+    },
+    "expected_value": false
+  },
+  {
+    "id": "seconds_to_hh_mm_ss",
+    "description": "Время: Форматирование секунд",
+    "prompt": "Преобразуй общее количество секунд total_seconds в строку формата 'HH:MM:SS'. Добавляй ведущие нули, если число меньше 10.",
+    "context": {
+      "wf": {
+        "vars": {
+          "total_seconds": 3665
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local s = wf.vars.total_seconds; local h = math.floor(s / 3600); local m = math.floor((s % 3600) / 60); local sec = s % 60; return string.format('%02d:%02d:%02d', h, m, sec)"
+    },
+    "expected_value": "01:01:05"
+  },
+  {
+    "id": "frequency_map",
+    "description": "Массивы: Подсчет частоты элементов (Гистограмма)",
+    "prompt": "Создай объект (таблицу), где ключами будут уникальные элементы массива votes, а значениями — количество их повторений.",
+    "context": {
+      "wf": {
+        "vars": {
+          "votes":["yes", "no", "yes", "yes", "maybe"]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local map = {}; for _, v in ipairs(wf.vars.votes) do map[v] = (map[v] or 0) + 1 end; return map"
+    },
+    "expected_value": {
+      "yes": 3,
+      "no": 1,
+      "maybe": 1
+    }
+  },
+  {
+    "id": "map_array_of_objects",
+    "description": "Массивы: Извлечение поля из массива объектов (Map)",
+    "prompt": "Из массива объектов users верни новый массив, состоящий только из значений поля id.",
+    "context": {
+      "wf": {
+        "vars": {
+          "users":[
+            {"id": 101, "name": "A"},
+            {"id": 102, "name": "B"}
+          ]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local ids = {}; for _, u in ipairs(wf.vars.users) do table.insert(ids, u.id) end; return ids"
+    },
+    "expected_value": [101, 102]
+  },
+  {
+    "id": "case_insensitive_substring",
+    "description": "Строки: Поиск подстроки без учета регистра",
+    "prompt": "Верни true, если строка text содержит подстроку keyword, иначе false. Поиск должен быть независимым от регистра.",
+    "context": {
+      "wf": {
+        "vars": {
+          "text": "The quick brown fox",
+          "keyword": "BROWN"
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "return string.find(string.lower(wf.vars.text), string.lower(wf.vars.keyword), 1, true) ~= nil"
+    },
+    "expected_value": true
+  },
+  {
+    "id": "array_intersection",
+    "description": "Массивы: Пересечение двух массивов",
+    "prompt": "Верни массив, содержащий только те элементы, которые присутствуют одновременно и в массиве list_a, и в массиве list_b. Без дубликатов.",
+    "context": {
+      "wf": {
+        "vars": {
+          "list_a": [1, 2, 3, 4],
+          "list_b": [3, 4, 5, 6]
+        }
+      }
+    },
+    "reference": {
+      "type": "code",
+      "value": "local set = {}; local res = {}; for _, v in ipairs(wf.vars.list_a) do set[v] = true end; for _, v in ipairs(wf.vars.list_b) do if set[v] then table.insert(res, v); set[v] = false end end; return res"
+    },
+    "expected_value": [3, 4]
+  },
+  {
+    "id": "clarify_sorting_criteria",
+    "description": "Уточнение: По какому полю и как сортировать массив объектов",
+    "prompt": "Отсортируй массив пользователей users.",
+    "context": {
+      "wf": {
+        "vars": {
+          "users":[
+            {"name": "Alice", "age": 30},
+            {"name": "Bob", "age": 25},
+            {"name": "Charlie", "age": 35}
+          ]
+        }
+      }
+    },
+    "clarification_answers":[
+      "Отсортируй по полю age по возрастанию (от меньшего к большему)."
+    ],
+    "reference": {
+      "type": "code",
+      "value": "local users = wf.vars.users; table.sort(users, function(a, b) return a.age < b.age end); return users"
+    },
+    "expected_value":[
+      {"name": "Bob", "age": 25},
+      {"name": "Alice", "age": 30},
+      {"name": "Charlie", "age": 35}
+    ]
+  },
+  {
+    "id": "clarify_filtering_condition",
+    "description": "Уточнение: Какое условие использовать для фильтрации",
+    "prompt": "Удали невалидные транзакции из массива transactions.",
+    "context": {
+      "wf": {
+        "vars": {
+          "transactions":[
+            {"id": 1, "amount": 150},
+            {"id": 2, "amount": -50},
+            {"id": 3, "amount": 0},
+            {"id": 4, "amount": 20}
+          ]
+        }
+      }
+    },
+    "clarification_answers":[
+      "Невалидными считаются транзакции, где поле amount меньше или равно нулю. Верни массив только с валидными."
+    ],
+    "reference": {
+      "type": "code",
+      "value": "local res = _utils.array.new(); for _, t in ipairs(wf.vars.transactions) do if t.amount > 0 then table.insert(res, t) end end; return res"
+    },
+    "expected_value":[
+      {"id": 1, "amount": 150},
+      {"id": 4, "amount": 20}
+    ]
+  },
+  {
+    "id": "clarify_string_formatting",
+    "description": "Уточнение: Какой шаблон использовать для генерации строки",
+    "prompt": "Сгенерируй строку приветствия для пользователя, используя объект user.",
+    "context": {
+      "wf": {
+        "vars": {
+          "user": {
+            "first_name": "Иван",
+            "last_name": "Иванов",
+            "role": "admin"
+          }
+        }
+      }
+    },
+    "clarification_answers":[
+      "Формат строки должен быть строго таким: 'Привет, [first_name] [last_name]! Твоя роль: [role]'."
+    ],
+    "reference": {
+      "type": "code",
+      "value": "local u = wf.vars.user; return string.format('Привет, %s %s! Твоя роль: %s', u.first_name, u.last_name, u.role)"
+    },
+    "expected_value": "Привет, Иван Иванов! Твоя роль: admin"
+  },
+  {
+    "id": "clarify_fallback_logic",
+    "description": "Уточнение: Какое значение возвращать по умолчанию",
+    "prompt": "Определи размер скидки (числом) в зависимости от уровня клиента (client_tier). Для уровня 'gold' скидка 20, для 'silver' скидка 10.",
+    "context": {
+      "wf": {
+        "vars": {
+          "client_tier": "bronze"
+        }
+      }
+    },
+    "clarification_answers":[
+      "Если уровень не gold и не silver, скидка должна быть равна 0."
+    ],
+    "reference": {
+      "type": "code",
+      "value": "local t = wf.vars.client_tier; if t == 'gold' then return 20 elseif t == 'silver' then return 10 else return 0 end"
+    },
+    "expected_value": 0
+  },
+  {
+    "id": "clarify_math_rounding",
+    "description": "Уточнение: Правила округления при математических операциях",
+    "prompt": "Вычисли налог в размере 20% от переменной price.",
+    "context": {
+      "wf": {
+        "vars": {
+          "price": 100.55
+        }
+      }
+    },
+    "clarification_answers": [
+      "Результат нужно обязательно округлить до ближайшего целого числа по стандартным математическим правилам."
+    ],
+    "reference": {
+      "type": "code",
+      "value": "local tax = wf.vars.price * 0.2; return math.floor(tax + 0.5)"
+    },
+    "expected_value": 20
+  }
+]

@@ -10,12 +10,12 @@ ENV UV_SYSTEM_PYTHON=1
 
 WORKDIR /app
 
-COPY tests/requirements.txt ./tests/requirements.txt
+COPY services/tests/requirements.txt ./services/tests/requirements.txt
 
-RUN uv pip install --no-cache-dir -r tests/requirements.txt
+RUN uv pip install --no-cache-dir -r services/tests/requirements.txt
 
 COPY proto/ ./proto/
-COPY tests/ ./tests/
+COPY services/tests/ ./tests/
 
 RUN mkdir -p /app/tests/generated && \
     touch /app/tests/generated/__init__.py && \
