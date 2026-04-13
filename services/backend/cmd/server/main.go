@@ -22,7 +22,12 @@ func main() {
 		log.Fatalf("grpc dial %s: %v", cfg.LLMAddr, err)
 	}
 
-	defer conn.Close()
+	defer func(conn *grpc.ClientConn) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Printf("grpc dial %s: %v", cfg.LLMAddr, err)
+		}
+	}(conn)
 
 	stateStore := session.NewStore(cfg.RedisAddr, 1020*time.Second)
 
