@@ -5,14 +5,16 @@ import (
 )
 
 type Config struct {
-	Port    string
-	LLMAddr string
+	Port      string
+	LLMAddr   string
+	RedisAddr string
 }
 
 func LoadConfig() *Config {
 	return &Config{
-		Port:    getEnv("BACKEND_PORT", "8080"),
-		LLMAddr: getEnv("LLM_ADDR", "localhost:50051"),
+		Port:      getEnv("BACKEND_PORT", "8080"),
+		LLMAddr:   getEnv("LLM_ADDR", "localhost:50051"),
+		RedisAddr: getEnv("REDIS_ADDR", "localhost:6379"),
 	}
 }
 

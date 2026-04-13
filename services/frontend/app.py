@@ -129,98 +129,74 @@ def call_backend(prompt: str) -> dict:
     resp.raise_for_status()
     return resp.json()
 
+def unwrap_lua(raw: str) -> str:
+    if raw and raw.startswith("lua{") and raw.endswith("}lua"):
+        return raw[4:-4].strip()
+    return raw.strip() if raw else ""
+
+def unwrap_text(raw: str) -> str:
+    if raw and raw.startswith("text{") and raw.endswith("}text"):
+        return raw[5:-5].strip()
+    return raw.strip() if raw else ""
+
+
 
 # ==========================================
 # ОСНОВНОЙ ЧАТ
 # ==========================================
 st.title("🌊🥒 Ocean Cucumber")
 
-# Визуальная подсказка, если ждем ответа на вопрос
 if st.session_state.pending_session_id:
     st.info("💡 Агент задал уточняющий вопрос. Пожалуйста, ответьте на него ниже.", icon="⏳")
 
-# Отображение всех сообщений из истории с кастомными аватарками
 for msg in st.session_state.messages:
     avatar = "🥒" if msg["role"] == "assistant" else "🧑‍💻"
     with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-# Динамический плейсхолдер для поля ввода
-input_placeholder = "Ответьте на уточнение..." if st.session_state.pending_session_id else "Опишите задачу для Lua-скрипта..."
-
-# Поле ввода для пользователя
-if prompt := st.chat_input(input_placeholder):
-    
-    # Валидации перед отправкой
+if prompt := st.chat_input("Ответьте на уточнение..." if st.session_state.pending_session_id else "Опишите задачу..."):
     if is_changed:
         st.toast("Вы не сохранили JSON!", icon="⚠️")
-        st.error("Пожалуйста, нажмите «Сохранить JSON» в боковой панели перед отправкой запроса.")
         st.stop()
-        
     if not st.session_state.json_valid:
         st.toast("Ошибка в JSON!", icon="❌")
-        st.error("В JSON есть ошибки. Исправьте их перед отправкой запроса.")
         st.stop()
 
-    # Добавляем сообщение пользователя
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="🧑‍💻"):
-        st.markdown(prompt)
+    with st.chat_message("user", avatar="🧑‍💻"): st.markdown(prompt)
 
-    # Обрабатываем ответ
     with st.chat_message("assistant", avatar="🥒"):
         try:
             with st.spinner("Ocean Cucumber думает..."):
-                data = call_backend(prompt=prompt)
-        except requests.HTTPError as e:
-            detail = str(e)
-            if e.response is not None:
-                try:
-                    body = e.response.json()
-                    detail = body.get("error", body.get("Error", detail))
-                except Exception:
-                    detail = e.response.text[:500] if e.response.text else detail
-            st.error(f"Ошибка бэкенда ({BACKEND_URL}): {detail}")
-            st.session_state.messages.append({"role": "assistant", "content": f"Ошибка HTTP: {detail}"})
-            st.stop()
-        except requests.RequestException as e:
-            st.error(f"Неизвестная ошибка при запросе к бэкенду: {e}")
-            st.session_state.messages.append({"role": "assistant", "content": f"Ошибка сети: {e}"})
+                data = call_backend(prompt)
+        except Exception as e:
+            st.error(f"Ошибка: {e}")
             st.stop()
 
-        # Разбор ответа от бэкенда
-        answer_parts =[]
         err = data.get("error")
-        code_str = data.get("code") or ""
-        question = data.get("question")
+        code_str = unwrap_lua(data.get("code"))
+        question = unwrap_text(data.get("question"))
         session_id = data.get("session_id")
 
-        if err and not code_str and not question:
+        ans_parts =[]
+        if err:
             st.error(err)
-            answer_parts.append(f"**Ошибка:** {err}")
+            ans_parts.append(f"**Ошибка:** {err}")
             st.session_state.pending_session_id = None
         else:
-            if err and (code_str or question):
-                st.warning(err)
-
             if code_str:
-                answer_parts.append("**Сгенерированный код:**")
                 st.code(code_str, language="lua")
-                # Для истории сохраняем код в markdown формате
-                answer_parts.append(f"```lua\n{code_str}\n```")
+                ans_parts.append(f"**Сгенерированный код:**\n```lua\n{code_str}\n```")
                 st.session_state.pending_session_id = None
 
             if question:
-                q = f"\n\n❓ **Уточнение:** {question}"
+                q = f"❓ **Уточнение:** {question}"
                 st.markdown(q)
-                answer_parts.append(q)
-                if session_id:
-                    st.session_state.pending_session_id = session_id
+                ans_parts.append(q)
+                st.session_state.pending_session_id = session_id
 
             if not code_str and not question and not err:
                 fallback = "Пустой ответ от сервера. Попробуйте переформулировать задачу."
                 st.markdown(fallback)
-                answer_parts.append(fallback)
 
-        full_answer = "\n".join(answer_parts).strip()
-        st.session_state.messages.append({"role": "assistant", "content": full_answer})
+        st.session_state.messages.append({"role": "assistant", "content": "\n\n".join(ans_parts)})

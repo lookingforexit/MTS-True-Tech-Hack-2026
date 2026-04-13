@@ -1,21 +1,18 @@
 import json
 import os
 import re
-import time
 import uuid
 import pytest
 
-from generated.api.llm.v1 import llm_pb2
-from generated.api.lua_validator.v1 import validator_pb2
+from gen.api.llm.v1 import llm_pb2
+from gen.api.lua_validator.v1 import validator_pb2
 
 def load_testcases():
     testcases_path = os.path.join(os.path.dirname(__file__), 'testcases.json')
-    if not os.path.exists(testcases_path):
-        return[]
+    if not os.path.exists(testcases_path): return[]
     with open(testcases_path, 'r', encoding='utf-8') as f:
         cases = json.load(f)
     return cases if isinstance(cases, list) else [cases]
-
 
 class TestLocalScript:
     
@@ -27,48 +24,51 @@ class TestLocalScript:
         context_data = case.get("context", {})
         context_str = json.dumps(context_data, ensure_ascii=False)
         
-        refinements = case.get("refinements",[])
-        refinements_used = 0
+        pipeline_state = llm_pb2.PipelineState(
+            session_id=session_id,
+            request=prompt_text
+        )
+        if context_data:
+            pipeline_state.context = context_str
 
-        req = llm_pb2.SessionRequest(session_id=session_id, request=prompt_text, context=context_str)
+        req = llm_pb2.SessionRequest(pipeline_state=pipeline_state)
+        
         resp = llm_stub.StartOrContinue(req)
+        current_state = resp.pipeline_state
 
-        def exhaust_llm_loop(current_resp):
-            max_iters = 15
-            while current_resp.phase not in[llm_pb2.DONE, llm_pb2.ERROR] and max_iters > 0:
-                if current_resp.phase == llm_pb2.CLARIFICATION_NEEDED:
-                    print(f"\n\n{'='*50}")
+        def exhaust_llm_loop(state):
+            max_iters = 10
+            while state.phase not in ["done", "error"] and max_iters > 0:
+                if state.phase == "clarification_needed":
+                    print(f"\n{'='*50}")
                     print(f"🤖 АГЕНТ ЗАДАЕТ ВОПРОС (Тест: {case.get('id')}):")
-                    print(current_resp.clarification_question)
+                    print(state.clarification_question)
                     print(f"{'='*50}")
                     
                     ans_text = input("👉 Введите ваш ответ: ")
                     
-                    current_resp = llm_stub.AnswerClarification(
-                        llm_pb2.AnswerRequest(session_id=session_id, answer=ans_text)
+                    ans_req = llm_pb2.AnswerRequest(
+                        session_id=session_id, 
+                        answer=ans_text,
+                        pipeline_state=state
                     )
+                    resp = llm_stub.AnswerClarification(ans_req)
+                    state = resp.pipeline_state
                 else:
-                    time.sleep(1)
-                    current_resp = llm_stub.GetSessionState(llm_pb2.GetStateRequest(session_id=session_id))
+                    pytest.fail(f"Неожиданная фаза от сервера: {state.phase}")
+                    
                 max_iters -= 1
             
-            assert max_iters > 0, "Таймаут генерации (зацикливание)"
-            if current_resp.phase == llm_pb2.ERROR and not current_resp.code:
-                pytest.fail(f"Пайплайн упал: {current_resp.error}")
-            assert current_resp.code, "Сгенерированный код пуст!"
-            return current_resp
+            assert max_iters > 0, "Таймаут генерации (зацикливание вопросов)"
+            if state.phase == "error" and not state.code:
+                pytest.fail(f"Пайплайн упал: {state.error}")
+            assert state.code, "Сгенерированный код пуст!"
+            return state
 
-        resp = exhaust_llm_loop(resp)
+        current_state = exhaust_llm_loop(current_state)
+        final_code = current_state.code
 
-        while refinements_used < len(refinements):
-            refine_prompt = refinements[refinements_used]
-            refine_req = llm_pb2.SessionRequest(session_id=session_id, request=refine_prompt)
-            resp = llm_stub.StartOrContinue(refine_req)
-            resp = exhaust_llm_loop(resp)
-            refinements_used += 1
-
-        final_code = resp.code
-
+        # --- Validation ---
         env_vars_json = json.dumps({
             "CONTEXT_JSON": json.dumps(context_data, ensure_ascii=False)
         }, ensure_ascii=False)

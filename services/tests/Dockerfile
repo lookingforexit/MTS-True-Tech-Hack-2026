@@ -16,15 +16,15 @@ RUN uv pip install --no-cache-dir ./services/tests
 COPY proto/ ./proto/
 COPY services/tests/ ./tests/
 
-RUN mkdir -p /app/tests/generated && \
-    touch /app/tests/generated/__init__.py && \
+RUN mkdir -p /app/tests/gen && \
+    touch /app/tests/gen/__init__.py && \
     python -m grpc_tools.protoc -I=/app/proto \
-        --python_out=/app/tests/generated \
-        --grpc_python_out=/app/tests/generated \
+        --python_out=/app/tests/gen \
+        --grpc_python_out=/app/tests/gen \
         /app/proto/api/llm/v1/llm.proto \
         /app/proto/api/lua_validator/v1/validator.proto
 
-ENV PYTHONPATH=/app/tests/generated:/app/tests
+ENV PYTHONPATH=/app/tests/gen:/app/tests
 
 WORKDIR /app/tests
 

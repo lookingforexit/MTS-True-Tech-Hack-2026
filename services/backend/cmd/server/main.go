@@ -1,12 +1,13 @@
 package main
 
 import (
-	"fmt"
-	"log"
-
 	llmv1 "backend/gen/llm/v1"
 	"backend/internal/config"
 	"backend/internal/handler"
+	"backend/internal/session"
+	"fmt"
+	"log"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
@@ -21,13 +22,20 @@ func main() {
 		log.Fatalf("grpc dial %s: %v", cfg.LLMAddr, err)
 	}
 
-	defer conn.Close()
+	defer func(conn *grpc.ClientConn) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Printf("grpc dial %s: %v", cfg.LLMAddr, err)
+		}
+	}(conn)
+
+	stateStore := session.NewStore(cfg.RedisAddr, 1020*time.Second)
 
 	llmClient := llmv1.NewLLMServiceClient(conn)
 
 	router := gin.Default()
 	router.GET("/health", handler.HealthHandler())
-	router.POST("/generate", handler.Handler(llmClient))
+	router.POST("/generate", handler.Handler(llmClient, stateStore))
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("listening on %s, LLM at %s", addr, cfg.LLMAddr)

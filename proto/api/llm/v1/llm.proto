@@ -8,46 +8,56 @@ service LLMService {
   rpc StartOrContinue(SessionRequest) returns (SessionResponse);
 
   rpc AnswerClarification(AnswerRequest) returns (SessionResponse);
+}
 
-  rpc GetSessionState(GetStateRequest) returns (SessionResponse);
+message ClarificationEntry {
+  string question = 1;
+  string answer = 2;
+}
+
+message PipelineState {
+  string session_id = 1;
+  string request = 2;
+  optional string context = 3;
+  optional string raw_context_json = 4;
+  string dialog_language = 5;
+
+  optional string clarification_answer = 6;
+  optional string clarification_question = 7;
+  repeated ClarificationEntry clarification_history = 8;
+  bool is_ambiguous = 9;
+  bool clarifying = 10;
+
+  optional string spec_json = 11;
+  bool spec_approved = 12;
+
+  optional string code = 13;
+  int32 generation_attempt = 14;
+
+  bool validation_success = 15;
+  optional string validation_output = 16;
+  optional string validation_error = 17;
+
+  string phase = 18;
+  optional string error = 19;
 }
 
 message SessionRequest {
-  // Unique session ID (generate UUID client-side).
-  string session_id = 1;
-  // User's request text.
-  string request = 2;
-  // Optional JSON context to be injected into the Lua environment.
-  // May be empty or omitted — the pipeline handles missing context gracefully.
-  string context = 3;
+  // Pipeline state
+  PipelineState pipeline_state = 1;
 }
 
 message AnswerRequest {
   string session_id = 1;
   // User's answer to the clarification question.
   string answer = 2;
-}
-
-message GetStateRequest {
-  string session_id = 1;
+  // Pipeline state
+  PipelineState pipeline_state = 3;
 }
 
 message SessionResponse {
-  string session_id = 1;
-  // Current phase of the session.
-  SessionPhase phase = 2;
-  // If phase == CLARIFICATION_NEEDED, this contains the question.
-  optional string clarification_question = 3;
-  // If phase == DONE, this contains the final code.
-  optional string code = 4;
-  // If phase == ERROR, this contains the error message.
-  optional string error = 5;
-  // Number of repair iterations performed.
-  int32 repair_count = 6;
-  // Validation output (stdout) if available.
-  optional string validation_output = 7;
-  // Detailed validation error (stderr) if available.
-  optional string validation_error = 8;
+  // Pipeline state
+  PipelineState pipeline_state = 1;
 }
 
 enum SessionPhase {
