@@ -4,8 +4,8 @@ import re
 import uuid
 import pytest
 
-from generated.api.llm.v1 import llm_pb2
-from generated.api.lua_validator.v1 import validator_pb2
+from gen.api.llm.v1 import llm_pb2
+from gen.api.lua_validator.v1 import validator_pb2
 
 def load_testcases():
     testcases_path = os.path.join(os.path.dirname(__file__), 'testcases.json')

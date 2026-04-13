@@ -2,8 +2,8 @@
 
 import grpc
 
-from generated.api.lua_checker.v1 import checker_pb2
-from generated.api.lua_checker.v1 import checker_pb2_grpc
+from gen.api.lua_checker.v1 import checker_pb2
+from gen.api.lua_checker.v1 import checker_pb2_grpc
 
 
 class LuaCheckerClient:

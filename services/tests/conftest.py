@@ -2,8 +2,8 @@ import os
 import pytest
 import grpc
 
-from generated.api.llm.v1 import llm_pb2_grpc
-from generated.api.lua_validator.v1 import validator_pb2_grpc
+from gen.api.llm.v1 import llm_pb2_grpc
+from gen.api.lua_validator.v1 import validator_pb2_grpc
 
 @pytest.fixture(scope="session")
 def llm_stub():

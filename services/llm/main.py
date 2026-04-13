@@ -14,8 +14,8 @@ from concurrent import futures
 import grpc
 from grpc_reflection.v1alpha import reflection
 
-from generated.api.llm.v1 import llm_pb2
-from generated.api.llm.v1 import llm_pb2_grpc
+from gen.api.llm.v1 import llm_pb2
+from gen.api.llm.v1 import llm_pb2_grpc
 from context_normalizer import normalize_context_safe
 from graph import detect_language, graph as pipeline_graph
 from state import PipelineState

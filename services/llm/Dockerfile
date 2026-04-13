@@ -16,8 +16,8 @@ COPY services/llm/pyproject.toml ./services/llm/pyproject.toml
 
 RUN uv pip install --system ./services/llm
 
-# Copy pre-generated gRPC stubs (nested package structure)
-COPY services/llm/generated ./services/llm/generated
+# Copy local gRPC stubs (nested package structure)
+COPY services/llm/gen ./services/llm/gen
 
 # Copy service source
 COPY services/llm/main.py \
@@ -34,7 +34,7 @@ RUN chmod +x ./services/llm/startup.sh
 
 WORKDIR /app/services/llm
 
-ENV PYTHONPATH=/app/services/llm/generated:/app/services/llm
+ENV PYTHONPATH=/app/services/llm/gen:/app/services/llm
 
 EXPOSE 50051
 

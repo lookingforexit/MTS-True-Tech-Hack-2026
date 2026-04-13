@@ -18,15 +18,15 @@ COPY services/lua-validator/pyproject.toml ./services/lua-validator/pyproject.to
 
 RUN uv pip install --system ./services/lua-validator
 
-# Copy pre-generated gRPC stubs (nested package structure)
-COPY services/lua-validator/generated ./services/lua-validator/generated
+# Copy local gRPC stubs (nested package structure)
+COPY services/lua-validator/gen ./services/lua-validator/gen
 
 # Copy service source
 COPY services/lua-validator/main.py ./services/lua-validator/main.py
 
 WORKDIR /app/services/lua-validator
 
-ENV PYTHONPATH=/app/services/lua-validator/generated:/app/services/lua-validator
+ENV PYTHONPATH=/app/services/lua-validator/gen:/app/services/lua-validator
 
 EXPOSE 50052
 
