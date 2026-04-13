@@ -115,8 +115,7 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 					Request:   req.Prompt,
 				}
 				if len(req.Context) > 0 {
-					contextValue := string(req.Context)
-					pipelineState.Context = &contextValue
+					pipelineState.Context = new(string(req.Context))
 				}
 			}
 			resp, err = client.StartOrContinue(rpcCtx, &llmv1.SessionRequest{
