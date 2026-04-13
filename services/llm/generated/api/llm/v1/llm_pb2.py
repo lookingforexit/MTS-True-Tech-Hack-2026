@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x61pi/llm/v1/llm.proto\x12\x06llm.v1\"6\n\x12\x43larificationEntry\x12\x10\n\x08question\x18\x01 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x02 \x01(\t\"\xac\x05\n\rPipelineState\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x0f\n\x07request\x18\x02 \x01(\t\x12\x14\n\x07\x63ontext\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x1d\n\x10raw_context_json\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x17\n\x0f\x64ialog_language\x18\x05 \x01(\t\x12!\n\x14\x63larification_answer\x18\x06 \x01(\tH\x02\x88\x01\x01\x12#\n\x16\x63larification_question\x18\x07 \x01(\tH\x03\x88\x01\x01\x12\x39\n\x15\x63larification_history\x18\x08 \x03(\x0b\x32\x1a.llm.v1.ClarificationEntry\x12\x14\n\x0cis_ambiguous\x18\t \x01(\x08\x12\x12\n\nclarifying\x18\n \x01(\x08\x12\x16\n\tspec_json\x18\x0b \x01(\tH\x04\x88\x01\x01\x12\x15\n\rspec_approved\x18\x0c \x01(\x08\x12\x11\n\x04\x63ode\x18\r \x01(\tH\x05\x88\x01\x01\x12\x1a\n\x12generation_attempt\x18\x0e \x01(\x05\x12\x1a\n\x12validation_success\x18\x0f \x01(\x08\x12\x1e\n\x11validation_output\x18\x10 \x01(\tH\x06\x88\x01\x01\x12\x1d\n\x10validation_error\x18\x11 \x01(\tH\x07\x88\x01\x01\x12\r\n\x05phase\x18\x12 \x01(\t\x12\x12\n\x05\x65rror\x18\x13 \x01(\tH\x08\x88\x01\x01\x42\n\n\x08_contextB\x13\n\x11_raw_context_jsonB\x17\n\x15_clarification_answerB\x19\n\x17_clarification_questionB\x0c\n\n_spec_jsonB\x07\n\x05_codeB\x14\n\x12_validation_outputB\x13\n\x11_validation_errorB\x08\n\x06_error\"?\n\x0eSessionRequest\x12-\n\x0epipeline_state\x18\x01 \x01(\x0b\x32\x15.llm.v1.PipelineState\"b\n\rAnswerRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x02 \x01(\t\x12-\n\x0epipeline_state\x18\x03 \x01(\x0b\x32\x15.llm.v1.PipelineState\"%\n\x0fGetStateRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\"@\n\x0fSessionResponse\x12-\n\x0epipeline_state\x18\x01 \x01(\x0b\x32\x15.llm.v1.PipelineState*h\n\x0cSessionPhase\x12\x15\n\x11PHASE_UNSPECIFIED\x10\x00\x12\x18\n\x14\x43LARIFICATION_NEEDED\x10\x01\x12\x12\n\x0e\x43ODE_GENERATED\x10\x02\x12\x08\n\x04\x44ONE\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x32\xdc\x01\n\nLLMService\x12\x42\n\x0fStartOrContinue\x12\x16.llm.v1.SessionRequest\x1a\x17.llm.v1.SessionResponse\x12\x45\n\x13\x41nswerClarification\x12\x15.llm.v1.AnswerRequest\x1a\x17.llm.v1.SessionResponse\x12\x43\n\x0fGetSessionState\x12\x17.llm.v1.GetStateRequest\x1a\x17.llm.v1.SessionResponseB\x1aZ\x18\x62\x61\x63kend/gen/llm/v1;llmv1b\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x61pi/llm/v1/llm.proto\x12\x06llm.v1\"6\n\x12\x43larificationEntry\x12\x10\n\x08question\x18\x01 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x02 \x01(\t\"\xac\x05\n\rPipelineState\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x0f\n\x07request\x18\x02 \x01(\t\x12\x14\n\x07\x63ontext\x18\x03 \x01(\tH\x00\x88\x01\x01\x12\x1d\n\x10raw_context_json\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x17\n\x0f\x64ialog_language\x18\x05 \x01(\t\x12!\n\x14\x63larification_answer\x18\x06 \x01(\tH\x02\x88\x01\x01\x12#\n\x16\x63larification_question\x18\x07 \x01(\tH\x03\x88\x01\x01\x12\x39\n\x15\x63larification_history\x18\x08 \x03(\x0b\x32\x1a.llm.v1.ClarificationEntry\x12\x14\n\x0cis_ambiguous\x18\t \x01(\x08\x12\x12\n\nclarifying\x18\n \x01(\x08\x12\x16\n\tspec_json\x18\x0b \x01(\tH\x04\x88\x01\x01\x12\x15\n\rspec_approved\x18\x0c \x01(\x08\x12\x11\n\x04\x63ode\x18\r \x01(\tH\x05\x88\x01\x01\x12\x1a\n\x12generation_attempt\x18\x0e \x01(\x05\x12\x1a\n\x12validation_success\x18\x0f \x01(\x08\x12\x1e\n\x11validation_output\x18\x10 \x01(\tH\x06\x88\x01\x01\x12\x1d\n\x10validation_error\x18\x11 \x01(\tH\x07\x88\x01\x01\x12\r\n\x05phase\x18\x12 \x01(\t\x12\x12\n\x05\x65rror\x18\x13 \x01(\tH\x08\x88\x01\x01\x42\n\n\x08_contextB\x13\n\x11_raw_context_jsonB\x17\n\x15_clarification_answerB\x19\n\x17_clarification_questionB\x0c\n\n_spec_jsonB\x07\n\x05_codeB\x14\n\x12_validation_outputB\x13\n\x11_validation_errorB\x08\n\x06_error\"?\n\x0eSessionRequest\x12-\n\x0epipeline_state\x18\x01 \x01(\x0b\x32\x15.llm.v1.PipelineState\"b\n\rAnswerRequest\x12\x12\n\nsession_id\x18\x01 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x02 \x01(\t\x12-\n\x0epipeline_state\x18\x03 \x01(\x0b\x32\x15.llm.v1.PipelineState\"@\n\x0fSessionResponse\x12-\n\x0epipeline_state\x18\x01 \x01(\x0b\x32\x15.llm.v1.PipelineState*h\n\x0cSessionPhase\x12\x15\n\x11PHASE_UNSPECIFIED\x10\x00\x12\x18\n\x14\x43LARIFICATION_NEEDED\x10\x01\x12\x12\n\x0e\x43ODE_GENERATED\x10\x02\x12\x08\n\x04\x44ONE\x10\x03\x12\t\n\x05\x45RROR\x10\x04\x32\x97\x01\n\nLLMService\x12\x42\n\x0fStartOrContinue\x12\x16.llm.v1.SessionRequest\x1a\x17.llm.v1.SessionResponse\x12\x45\n\x13\x41nswerClarification\x12\x15.llm.v1.AnswerRequest\x1a\x17.llm.v1.SessionResponseB\x1aZ\x18\x62\x61\x63kend/gen/llm/v1;llmv1b\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,8 +32,8 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'api.llm.v1.llm_pb2', _globa
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'Z\030backend/gen/llm/v1;llmv1'
-  _globals['_SESSIONPHASE']._serialized_start=1045
-  _globals['_SESSIONPHASE']._serialized_end=1149
+  _globals['_SESSIONPHASE']._serialized_start=1006
+  _globals['_SESSIONPHASE']._serialized_end=1110
   _globals['_CLARIFICATIONENTRY']._serialized_start=32
   _globals['_CLARIFICATIONENTRY']._serialized_end=86
   _globals['_PIPELINESTATE']._serialized_start=89
@@ -42,10 +42,8 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_SESSIONREQUEST']._serialized_end=838
   _globals['_ANSWERREQUEST']._serialized_start=840
   _globals['_ANSWERREQUEST']._serialized_end=938
-  _globals['_GETSTATEREQUEST']._serialized_start=940
-  _globals['_GETSTATEREQUEST']._serialized_end=977
-  _globals['_SESSIONRESPONSE']._serialized_start=979
-  _globals['_SESSIONRESPONSE']._serialized_end=1043
-  _globals['_LLMSERVICE']._serialized_start=1152
-  _globals['_LLMSERVICE']._serialized_end=1372
+  _globals['_SESSIONRESPONSE']._serialized_start=940
+  _globals['_SESSIONRESPONSE']._serialized_end=1004
+  _globals['_LLMSERVICE']._serialized_start=1113
+  _globals['_LLMSERVICE']._serialized_end=1264
 # @@protoc_insertion_point(module_scope)

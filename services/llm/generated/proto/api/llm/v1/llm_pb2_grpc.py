@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from api.llm.v1 import llm_pb2 as api_dot_llm_dot_v1_dot_llm__pb2
+from proto.api.llm.v1 import llm_pb2 as proto_dot_api_dot_llm_dot_v1_dot_llm__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in api/llm/v1/llm_pb2_grpc.py depends on'
+        + ' but the generated code in proto/api/llm/v1/llm_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -36,13 +36,13 @@ class LLMServiceStub(object):
         """
         self.StartOrContinue = channel.unary_unary(
                 '/llm.v1.LLMService/StartOrContinue',
-                request_serializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionRequest.SerializeToString,
-                response_deserializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
+                request_serializer=proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionRequest.SerializeToString,
+                response_deserializer=proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
                 _registered_method=True)
         self.AnswerClarification = channel.unary_unary(
                 '/llm.v1.LLMService/AnswerClarification',
-                request_serializer=api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.SerializeToString,
-                response_deserializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
+                request_serializer=proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.SerializeToString,
+                response_deserializer=proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
                 _registered_method=True)
 
 
@@ -66,13 +66,13 @@ def add_LLMServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'StartOrContinue': grpc.unary_unary_rpc_method_handler(
                     servicer.StartOrContinue,
-                    request_deserializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionRequest.FromString,
-                    response_serializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.SerializeToString,
+                    request_deserializer=proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionRequest.FromString,
+                    response_serializer=proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.SerializeToString,
             ),
             'AnswerClarification': grpc.unary_unary_rpc_method_handler(
                     servicer.AnswerClarification,
-                    request_deserializer=api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.FromString,
-                    response_serializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.SerializeToString,
+                    request_deserializer=proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.FromString,
+                    response_serializer=proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -100,8 +100,8 @@ class LLMService(object):
             request,
             target,
             '/llm.v1.LLMService/StartOrContinue',
-            api_dot_llm_dot_v1_dot_llm__pb2.SessionRequest.SerializeToString,
-            api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
+            proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionRequest.SerializeToString,
+            proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -127,8 +127,8 @@ class LLMService(object):
             request,
             target,
             '/llm.v1.LLMService/AnswerClarification',
-            api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.SerializeToString,
-            api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
+            proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.SerializeToString,
+            proto_dot_api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
             options,
             channel_credentials,
             insecure,

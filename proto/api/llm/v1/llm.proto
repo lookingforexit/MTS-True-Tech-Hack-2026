@@ -8,8 +8,6 @@ service LLMService {
   rpc StartOrContinue(SessionRequest) returns (SessionResponse);
 
   rpc AnswerClarification(AnswerRequest) returns (SessionResponse);
-
-  rpc GetSessionState(GetStateRequest) returns (SessionResponse);
 }
 
 message ClarificationEntry {
@@ -55,10 +53,6 @@ message AnswerRequest {
   string answer = 2;
   // Pipeline state
   PipelineState pipeline_state = 3;
-}
-
-message GetStateRequest {
-  string session_id = 1;
 }
 
 message SessionResponse {

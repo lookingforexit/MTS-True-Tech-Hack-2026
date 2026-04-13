@@ -1,14 +1,13 @@
 package main
 
 import (
+	llmv1 "backend/gen/llm/v1"
+	"backend/internal/config"
+	"backend/internal/handler"
 	"backend/internal/session"
 	"fmt"
 	"log"
 	"time"
-
-	llmv1 "backend/gen/llm/v1"
-	"backend/internal/config"
-	"backend/internal/handler"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
@@ -25,7 +24,7 @@ func main() {
 
 	defer conn.Close()
 
-	stateStore := session.NewStore(cfg.RedisAddr, 24*time.Hour)
+	stateStore := session.NewStore(cfg.RedisAddr, 1020*time.Second)
 
 	llmClient := llmv1.NewLLMServiceClient(conn)
 

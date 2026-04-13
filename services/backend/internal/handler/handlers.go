@@ -1,8 +1,9 @@
 package handler
 
 import (
-	"backend/internal/session"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	llmv1 "backend/gen/llm/v1"
+	"backend/internal/session"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc/codes"
@@ -62,6 +64,14 @@ func wrapTextTransport(raw string) string {
 	return fmt.Sprintf("text{%s}text", raw)
 }
 
+func newSessionID() (string, error) {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf[:]), nil
+}
+
 func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var req GenerateRequest
@@ -76,6 +86,14 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 		if req.ClarificationAnswer == "" && req.Prompt == "" {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required unless sending clarification_answer"})
 			return
+		}
+		if req.SessionID == "" {
+			sessionID, err := newSessionID()
+			if err != nil {
+				ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate session_id: " + err.Error()})
+				return
+			}
+			req.SessionID = sessionID
 		}
 
 		if len(req.Context) > 0 {
@@ -117,6 +135,9 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 				if len(req.Context) > 0 {
 					pipelineState.Context = new(string(req.Context))
 				}
+			} else if pipelineState.GetPhase() == "clarification_needed" {
+				ctx.JSON(http.StatusConflict, GenerateResponse{Error: "session is waiting for clarification_answer"})
+				return
 			}
 			resp, err = client.StartOrContinue(rpcCtx, &llmv1.SessionRequest{
 				PipelineState: pipelineState,

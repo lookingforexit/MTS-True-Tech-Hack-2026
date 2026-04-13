@@ -86,12 +86,6 @@ class AnswerRequest(_message.Message):
     pipeline_state: PipelineState
     def __init__(self, session_id: _Optional[str] = ..., answer: _Optional[str] = ..., pipeline_state: _Optional[_Union[PipelineState, _Mapping]] = ...) -> None: ...
 
-class GetStateRequest(_message.Message):
-    __slots__ = ("session_id",)
-    SESSION_ID_FIELD_NUMBER: _ClassVar[int]
-    session_id: str
-    def __init__(self, session_id: _Optional[str] = ...) -> None: ...
-
 class SessionResponse(_message.Message):
     __slots__ = ("pipeline_state",)
     PIPELINE_STATE_FIELD_NUMBER: _ClassVar[int]

@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import time
 import uuid
 import pytest
 
@@ -29,25 +28,38 @@ class TestLocalScript:
         clarifications = case.get("clarification_answers",[])
         answers_used = 0
 
-        req = llm_pb2.SessionRequest(session_id=session_id, request=prompt_text, context=context_str)
+        pipeline_state = llm_pb2.PipelineState(
+            session_id=session_id,
+            request=prompt_text,
+            context=context_str,
+        )
+        req = llm_pb2.SessionRequest(pipeline_state=pipeline_state)
         resp = llm_stub.StartOrContinue(req)
+        pipeline_state = resp.pipeline_state
 
         max_iters = 15
-        while resp.phase not in[llm_pb2.DONE, llm_pb2.ERROR] and max_iters > 0:
-            if resp.phase == llm_pb2.CLARIFICATION_NEEDED:
+        while pipeline_state.phase not in ["done", "error"] and max_iters > 0:
+            if pipeline_state.phase == "clarification_needed":
                 ans_text = clarifications[answers_used] if answers_used < len(clarifications) else "Пиши код без вопросов."
-                resp = llm_stub.AnswerClarification(llm_pb2.AnswerRequest(session_id=session_id, answer=ans_text))
+                resp = llm_stub.AnswerClarification(
+                    llm_pb2.AnswerRequest(
+                        session_id=session_id,
+                        answer=ans_text,
+                        pipeline_state=pipeline_state,
+                    )
+                )
+                pipeline_state = resp.pipeline_state
                 answers_used += 1
             else:
-                time.sleep(1)
-                resp = llm_stub.GetSessionState(llm_pb2.GetStateRequest(session_id=session_id))
+                resp = llm_stub.StartOrContinue(llm_pb2.SessionRequest(pipeline_state=pipeline_state))
+                pipeline_state = resp.pipeline_state
             max_iters -= 1
 
         assert max_iters > 0, "Таймаут генерации"
-        if resp.phase == llm_pb2.ERROR and not resp.code:
-            pytest.fail(f"Пайплайн упал без генерации кода. Ошибка: {resp.error}")
+        if pipeline_state.phase == "error" and not pipeline_state.code:
+            pytest.fail(f"Пайплайн упал без генерации кода. Ошибка: {pipeline_state.error}")
             
-        assert resp.code, "Сгенерированный код пуст!"
+        assert pipeline_state.code, "Сгенерированный код пуст!"
 
         # --- ЭТАП 2: ЗАПУСК В ВАЛИДАТОРЕ И ПРОВЕРКА РЕЗУЛЬТАТА ---
         # Отправляем код и JSON контекста в lua-validator
@@ -58,14 +70,14 @@ class TestLocalScript:
         }, ensure_ascii=False)
 
         val_req = validator_pb2.ValidateRequest(
-            code=resp.code,
+            code=pipeline_state.code,
             timeout_ms=5000,
             env_vars=env_vars_json
         )
         val_resp = validator_stub.Validate(val_req)
 
         # 3. Проверка на ошибки синтаксиса и падения во время выполнения (Runtime)
-        assert val_resp.success, f"Код упал при выполнении!\nОшибка: {val_resp.error}\nВывод: {val_resp.output}\nСгенерированный код LLM:\n{resp.code}"
+        assert val_resp.success, f"Код упал при выполнении!\nОшибка: {val_resp.error}\nВывод: {val_resp.output}\nСгенерированный код LLM:\n{pipeline_state.code}"
 
         # 4. Логическая проверка (Сравниваем с expected_value)
         if "expected_value" in case:
@@ -83,4 +95,4 @@ class TestLocalScript:
                 pytest.fail(f"Не удалось распарсить ответ Lua в Python: {actual_json_str}")
 
             # ФИНАЛЬНАЯ ПРОВЕРКА!
-            assert actual == expected, f"НЕВЕРНЫЙ РЕЗУЛЬТАТ!\nОжидалось: {expected}\nПолучено: {actual}\n\nКод от LLM:\n{resp.code}"
+            assert actual == expected, f"НЕВЕРНЫЙ РЕЗУЛЬТАТ!\nОжидалось: {expected}\nПолучено: {actual}\n\nКод от LLM:\n{pipeline_state.code}"

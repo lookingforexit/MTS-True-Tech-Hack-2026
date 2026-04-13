@@ -44,11 +44,6 @@ class LLMServiceStub(object):
                 request_serializer=api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.SerializeToString,
                 response_deserializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
                 _registered_method=True)
-        self.GetSessionState = channel.unary_unary(
-                '/llm.v1.LLMService/GetSessionState',
-                request_serializer=api_dot_llm_dot_v1_dot_llm__pb2.GetStateRequest.SerializeToString,
-                response_deserializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
-                _registered_method=True)
 
 
 class LLMServiceServicer(object):
@@ -66,12 +61,6 @@ class LLMServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def GetSessionState(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
 
 def add_LLMServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -83,11 +72,6 @@ def add_LLMServiceServicer_to_server(servicer, server):
             'AnswerClarification': grpc.unary_unary_rpc_method_handler(
                     servicer.AnswerClarification,
                     request_deserializer=api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.FromString,
-                    response_serializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.SerializeToString,
-            ),
-            'GetSessionState': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetSessionState,
-                    request_deserializer=api_dot_llm_dot_v1_dot_llm__pb2.GetStateRequest.FromString,
                     response_serializer=api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.SerializeToString,
             ),
     }
@@ -144,33 +128,6 @@ class LLMService(object):
             target,
             '/llm.v1.LLMService/AnswerClarification',
             api_dot_llm_dot_v1_dot_llm__pb2.AnswerRequest.SerializeToString,
-            api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def GetSessionState(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/llm.v1.LLMService/GetSessionState',
-            api_dot_llm_dot_v1_dot_llm__pb2.GetStateRequest.SerializeToString,
             api_dot_llm_dot_v1_dot_llm__pb2.SessionResponse.FromString,
             options,
             channel_credentials,
