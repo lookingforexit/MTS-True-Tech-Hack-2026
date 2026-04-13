@@ -1,4 +1,19 @@
-"""LangGraph state definition for the simplified multi-agent LLM pipeline."""
+"""LangGraph state definition for the simplified multi-agent LLM pipeline.
+
+State machine phases (``phase`` field):
+    running               — pipeline is executing
+    clarification_needed  — waiting for user answer to a clarification question
+    done                  — pipeline completed successfully
+    error                 — pipeline failed with an unrecoverable error
+
+Clarification lifecycle:
+    1. clarifier_node detects ambiguity → sets clarification_question + is_ambiguous
+    2. route_after_clarifier routes to clarification_needed terminal node
+    3. External caller provides answer via StartOrContinue or AnswerClarification
+    4. Resume sets clarification_answer + phase=running + clarifying=True
+    5. update_spec_node rebuilds spec with clarification_history
+    6. clarifier_node reviews the updated spec (no short-circuit)
+"""
 
 from typing import Optional
 
@@ -25,8 +40,9 @@ class PipelineState(TypedDict, total=False):
     # ── Clarification ────────────────────────────────────────────────
     clarification_answer: Optional[str]
     clarification_question: Optional[str]
-    clarification_history: Optional[list[dict]]
+    clarification_history: list[dict]  # list of {"question": str, "answer": str}
     is_ambiguous: bool
+    clarifying: bool                   # True when re-running after a clarification answer
 
     # ── Spec ─────────────────────────────────────────────────────────
     spec_json: Optional[str]

@@ -22,6 +22,10 @@ YOUR JOB
 --------
 Convert the user's natural-language request into a normalized JSON specification.
 
+When a "Clarification dialogue" section is present, the user has already answered
+a follow-up question.  Incorporate that answer into the updated spec — do NOT
+ignore it.  The refined spec should reflect the clarified intent.
+
 Output format — return exactly one JSON object and nothing else:
 {
   "goal": string,
@@ -81,6 +85,7 @@ Rules:
 2. Be conservative about asking questions. If a competent programmer can implement it directly, set need_clarification to false.
 3. Fill in reasonable defaults whenever possible.
 4. Keep the goal concise and actionable.
+5. When clarification dialogue is provided, merge the user's answer into the spec. The answer is the source of truth for the user's real intent.
 """
 
 # ── Clarifier-agent ────────────────────────────────────────────────────
