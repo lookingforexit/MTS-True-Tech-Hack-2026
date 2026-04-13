@@ -21,9 +21,19 @@ st.markdown("""
         font-family: 'Fira Code', 'Courier New', monospace !important;
         font-size: 13px !important;
     }
-    /* Слегка стилизуем кнопку очистки */
-    .btn-clear {
-        margin-top: 20px;
+    
+    /* 1. Скрываем меню разработчика (три точки) */
+    #MainMenu {visibility: hidden;}
+    [data-testid="stToolbar"] {visibility: hidden;}
+    
+    /* 2. Скрываем бегающего человечка/эмодзи (индикатор загрузки) */[data-testid="stStatusWidget"] {visibility: hidden;}
+    
+    /* 3. Скрываем надпись "Made with Streamlit" в подвале страницы */
+    footer {visibility: hidden;}
+    
+    /* 4. Убираем лишний отступ сверху, который остается после скрытия меню */
+    .block-container {
+        padding-top: 2rem !important;
     }
     </style>
 """, unsafe_allow_html=True)
