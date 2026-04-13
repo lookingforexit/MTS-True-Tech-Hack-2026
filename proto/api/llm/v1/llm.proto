@@ -46,6 +46,8 @@ message SessionResponse {
   int32 repair_count = 6;
   // Validation output (stdout) if available.
   optional string validation_output = 7;
+  // Detailed validation error (stderr) if available.
+  optional string validation_error = 8;
 }
 
 enum SessionPhase {

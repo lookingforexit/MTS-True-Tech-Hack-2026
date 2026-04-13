@@ -22,16 +22,17 @@ DEFAULT_TIMEOUT_MS = 5000
 
 # Lua sandbox template - wraps user code with environment setup
 LUA_SANDBOX_TEMPLATE = """
--- 1. ЧИТАЕМ КОНТЕКСТ ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ
+-- 1. ЧИТАЕМ КОНТЕКСТ ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ (опционально)
 local dkjson = require("dkjson")
 local context_json = os.getenv("CONTEXT_JSON")
-if not context_json then
-    print("ERROR: CONTEXT_JSON environment variable not set")
-    os.exit(1)
-end
 
-local context = dkjson.decode(context_json)
-local wf_data = context.wf or {{vars = {{}}, initVariables = {{}}}}
+local wf_data = {{vars = {{}}, initVariables = {{}}}}
+if context_json then
+    local ok, context = pcall(dkjson.decode, context_json)
+    if ok and context and type(context) == "table" and context.wf then
+        wf_data = context.wf
+    end
+end
 
 -- 2. МОКИРУЕМ СРЕДУ (wf и _utils)
 wf = wf_data
