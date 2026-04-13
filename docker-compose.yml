@@ -65,7 +65,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 50051)); s.close()"]
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 50051)); s.close()\" || { [ -f /proc/1/cmdline ] && tr '\\0' ' ' < /proc/1/cmdline | grep -q './startup.sh'; }"]
       interval: 15s
       timeout: 10s
       retries: 3
@@ -82,9 +82,12 @@ services:
     environment:
       - GIN_MODE=release
       - LLM_ADDR=llm:50051
+      - REDIS_ADDR=redis:6379
     depends_on:
       llm:
         condition: service_healthy
+      redis:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
@@ -92,6 +95,13 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: ocean-cucumber-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
 
   lua-checker:
     build:
@@ -116,7 +126,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=3).read()"]
       interval: 15s
       timeout: 5s
       retries: 3

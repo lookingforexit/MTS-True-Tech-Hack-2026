@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"backend/internal/session"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -61,7 +62,7 @@ func wrapTextTransport(raw string) string {
 	return fmt.Sprintf("text{%s}text", raw)
 }
 
-func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
+func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var req GenerateRequest
 		if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -91,20 +92,36 @@ func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
 		var resp *llmv1.SessionResponse
 		var err error
 
+		pipelineState, err := stateStore.Get(rpcCtx, req.SessionID)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
 		if req.ClarificationAnswer != "" {
+			if pipelineState == nil {
+				ctx.JSON(http.StatusNotFound, GenerateResponse{Error: "session state not found"})
+				return
+			}
 			resp, err = client.AnswerClarification(rpcCtx, &llmv1.AnswerRequest{
-				SessionId: req.SessionID,
-				Answer:    req.ClarificationAnswer,
+				SessionId:     req.SessionID,
+				Answer:        req.ClarificationAnswer,
+				PipelineState: pipelineState,
 			})
 		} else {
-			sr := &llmv1.SessionRequest{Request: req.Prompt}
-			if req.SessionID != "" {
-				sr.SessionId = req.SessionID
+			if pipelineState == nil {
+				pipelineState = &llmv1.PipelineState{
+					SessionId: req.SessionID,
+					Request:   req.Prompt,
+				}
+				if len(req.Context) > 0 {
+					contextValue := string(req.Context)
+					pipelineState.Context = &contextValue
+				}
 			}
-			if len(req.Context) > 0 {
-				sr.Context = string(req.Context)
-			}
-			resp, err = client.StartOrContinue(rpcCtx, sr)
+			resp, err = client.StartOrContinue(rpcCtx, &llmv1.SessionRequest{
+				PipelineState: pipelineState,
+			})
 		}
 
 		if err != nil {
@@ -119,28 +136,45 @@ func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
 			return
 		}
 
-		out := GenerateResponse{SessionID: resp.GetSessionId()}
+		state := resp.GetPipelineState()
+		if state == nil {
+			ctx.JSON(http.StatusBadGateway, GenerateResponse{Error: "LLM response has no pipeline_state"})
+			return
+		}
 
-		switch resp.GetPhase() {
-		case llmv1.SessionPhase_CLARIFICATION_NEEDED:
-			out.Question = wrapTextTransport(resp.GetClarificationQuestion())
-		case llmv1.SessionPhase_DONE, llmv1.SessionPhase_CODE_GENERATED:
-			out.Code = wrapLuaTransport(resp.GetCode())
-		case llmv1.SessionPhase_ERROR:
-			out.Error = resp.GetError()
-			out.ValidationError = resp.GetValidationError()
-			out.ValidationOutput = resp.GetValidationOutput()
-			out.RepairCount = resp.GetRepairCount()
+		if err := stateStore.Save(rpcCtx, state.GetSessionId(), state); err != nil {
+			ctx.JSON(http.StatusInternalServerError, GenerateResponse{Error: err.Error()})
+			return
+		}
+
+		out := GenerateResponse{SessionID: state.GetSessionId()}
+
+		switch state.GetPhase() {
+		case "clarification_needed":
+			out.Question = wrapTextTransport(state.GetClarificationQuestion())
+		case "done":
+			out.Code = wrapLuaTransport(state.GetCode())
+		case "error":
+			out.Error = state.GetError()
+			out.ValidationError = state.GetValidationError()
+			out.ValidationOutput = state.GetValidationOutput()
+			out.RepairCount = state.GetGenerationAttempt() - 1
+			if out.RepairCount < 0 {
+				out.RepairCount = 0
+			}
 		default:
-			if resp.GetCode() != "" {
-				out.Code = wrapLuaTransport(resp.GetCode())
-			} else if resp.GetClarificationQuestion() != "" {
-				out.Question = wrapTextTransport(resp.GetClarificationQuestion())
-			} else if resp.GetError() != "" {
-				out.Error = resp.GetError()
-				out.ValidationError = resp.GetValidationError()
-				out.ValidationOutput = resp.GetValidationOutput()
-				out.RepairCount = resp.GetRepairCount()
+			if state.GetCode() != "" {
+				out.Code = wrapLuaTransport(state.GetCode())
+			} else if state.GetClarificationQuestion() != "" {
+				out.Question = wrapTextTransport(state.GetClarificationQuestion())
+			} else if state.GetError() != "" {
+				out.Error = state.GetError()
+				out.ValidationError = state.GetValidationError()
+				out.ValidationOutput = state.GetValidationOutput()
+				out.RepairCount = state.GetGenerationAttempt() - 1
+				if out.RepairCount < 0 {
+					out.RepairCount = 0
+				}
 			}
 		}
 

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"backend/internal/session"
 	"fmt"
 	"log"
+	"time"
 
 	llmv1 "backend/gen/llm/v1"
 	"backend/internal/config"
@@ -23,11 +25,13 @@ func main() {
 
 	defer conn.Close()
 
+	stateStore := session.NewStore(cfg.RedisAddr, 24*time.Hour)
+
 	llmClient := llmv1.NewLLMServiceClient(conn)
 
 	router := gin.Default()
 	router.GET("/health", handler.HealthHandler())
-	router.POST("/generate", handler.Handler(llmClient))
+	router.POST("/generate", handler.Handler(llmClient, stateStore))
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("listening on %s, LLM at %s", addr, cfg.LLMAddr)

@@ -15,6 +15,7 @@ Session semantics
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from concurrent import futures
@@ -34,6 +35,72 @@ logger = logging.getLogger(__name__)
 # In-memory session store: session_id -> latest state snapshot
 _sessions: dict[str, dict] = {}
 _sessions_lock = Lock()
+
+
+def _proto_state_to_dict(msg) -> PipelineState:
+    return {
+        "session_id": msg.session_id,
+        "request": msg.request,
+        "context": msg.context if msg.HasField("context") else None,
+        "raw_context": json.loads(msg.raw_context_json) if msg.HasField("raw_context_json") else None,
+        "dialog_language": msg.dialog_language,
+        "clarification_answer": msg.clarification_answer if msg.HasField("clarification_answer") else None,
+        "clarification_question": msg.clarification_question if msg.HasField("clarification_question") else None,
+        "clarification_history": [{"question": item.question, "answer": item.answer} for item in msg.clarification_history],
+        "is_ambiguous": msg.is_ambiguous,
+        "clarifying": msg.clarifying,
+        "spec_json": msg.spec_json if msg.HasField("spec_json") else None,
+        "spec_approved": msg.spec_approved,
+        "code": msg.code if msg.HasField("code") else None,
+        "generation_attempt": msg.generation_attempt,
+        "validation_success": msg.validation_success,
+        "validation_output": msg.validation_output if msg.HasField("validation_output") else None,
+        "validation_error": msg.validation_error if msg.HasField("validation_error") else None,
+        "phase": msg.phase,
+        "error": msg.error if msg.HasField("error") else None,
+    }
+
+
+def _dict_to_proto_state(state: dict) -> llm_pb2.PipelineState:
+    msg = llm_pb2.PipelineState(
+        session_id=state.get("session_id", ""),
+        request=state.get("request", ""),
+        dialog_language=state.get("dialog_language", ""),
+        is_ambiguous=bool(state.get("is_ambiguous", False)),
+        clarifying=bool(state.get("clarifying", False)),
+        spec_approved=bool(state.get("spec_approved", False)),
+        generation_attempt=int(state.get("generation_attempt", 0)),
+        validation_success=bool(state.get("validation_success", False)),
+        phase=state.get("phase", ""),
+    )
+
+    for field in (
+        "context",
+        "clarification_answer",
+        "clarification_question",
+        "spec_json",
+        "code",
+        "validation_output",
+        "validation_error",
+        "error",
+    ):
+        value = state.get(field)
+        if value is not None:
+            setattr(msg, field, value)
+
+    raw_context = state.get("raw_context")
+    if raw_context is not None:
+        msg.raw_context_json = json.dumps(raw_context, ensure_ascii=False)
+
+    for item in state.get("clarification_history") or []:
+        msg.clarification_history.append(
+            llm_pb2.ClarificationEntry(
+                question=item.get("question") or "",
+                answer=item.get("answer") or "",
+            )
+        )
+
+    return msg
 
 
 def _get_session(session_id: str) -> dict | None:
@@ -73,15 +140,12 @@ def _state_to_response(session_id: str, state: dict) -> llm_pb2.SessionResponse:
                 parts.append(f"Validation output: {validation_output}")
             error_msg = "\n".join(parts)
 
+    response_state = {**state, "session_id": session_id}
+    if error_msg:
+        response_state["error"] = error_msg
+
     return llm_pb2.SessionResponse(
-        session_id=session_id,
-        phase=_phase_to_enum(phase),
-        clarification_question=state.get("clarification_question") or None,
-        code=state.get("code") or None,
-        error=error_msg or None,
-        repair_count=max(0, state.get("generation_attempt", 0) - 1),
-        validation_output=state.get("validation_output") or None,
-        validation_error=state.get("validation_error") or None,
+        pipeline_state=_dict_to_proto_state(response_state),
     )
 
 
@@ -163,8 +227,16 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
     """Implements the stateful LangGraph LLMService."""
 
     def StartOrContinue(self, request, context):
-        session_id = request.session_id or uuid.uuid4().hex
-        prev = _get_session(session_id)
+        incoming_state = None
+        prev = None
+        if request.HasField("pipeline_state"):
+            incoming_state = _proto_state_to_dict(request.pipeline_state)
+            session_id = incoming_state.get("session_id") or uuid.uuid4().hex
+            if incoming_state.get("phase"):
+                prev = incoming_state
+        else:
+            session_id = uuid.uuid4().hex
+            prev = _get_session(session_id)
 
         # ── Existing session ──────────────────────────────────────────
         if prev:
@@ -172,7 +244,8 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
 
             if phase == "clarification_needed":
                 return _resume_with_clarification(
-                    prev, request.request, pipeline_graph, session_id, context,
+                    prev, incoming_state.get("request", "") if incoming_state else "",
+                    pipeline_graph, session_id, context,
                 )
 
             if phase in ("done", "error"):
@@ -192,8 +265,9 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
                 return _state_to_response(session_id, error_state)
 
         # ── New session ───────────────────────────────────────────────
-        session_id = session_id or uuid.uuid4().hex
-        initial_state = _make_initial_state(session_id, request.request, request.context)
+        request_text = incoming_state.get("request", "") if incoming_state else ""
+        context_text = incoming_state.get("context") if incoming_state else None
+        initial_state = _make_initial_state(session_id, request_text, context_text)
 
         try:
             result = pipeline_graph.invoke(initial_state)
@@ -209,7 +283,11 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
 
     def AnswerClarification(self, request, context):
         session_id = request.session_id
-        prev = _get_session(session_id)
+        if request.HasField("pipeline_state"):
+            prev = _proto_state_to_dict(request.pipeline_state)
+            session_id = session_id or prev.get("session_id")
+        else:
+            prev = _get_session(session_id)
         if not prev:
             context.set_code(grpc.StatusCode.NOT_FOUND)
             context.set_details(f"Session {session_id} not found")
