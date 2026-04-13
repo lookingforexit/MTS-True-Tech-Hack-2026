@@ -18,3 +18,10 @@ dependencies = [
 
 [tool.setuptools]
 py-modules = ["main", "graph", "state", "prompts", "validator_client"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0"]

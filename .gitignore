@@ -3,3 +3,4 @@
 *.python-version
 *gen
 *.idea
+tests/reports/*

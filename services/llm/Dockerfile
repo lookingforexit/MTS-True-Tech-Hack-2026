@@ -7,40 +7,34 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv
 
 COPY proto ./proto
-COPY services/llm ./services/llm
 COPY services/llm/pyproject.toml ./services/llm/pyproject.toml
 
 RUN uv pip install --system ./services/llm
 
-WORKDIR /app
+# Copy pre-generated gRPC stubs (nested package structure)
+COPY services/llm/generated ./services/llm/generated
 
-RUN python -m grpc_tools.protoc \
-    -I ./proto \
-    --python_out=./services/llm \
-    --grpc_python_out=./services/llm \
-    ./proto/api/llm/v1/llm.proto \
-    && python -m grpc_tools.protoc \
-    -I ./proto \
-    --python_out=./services/llm \
-    --grpc_python_out=./services/llm \
-    ./proto/api/lua_validator/v1/validator.proto
+# Copy service source
+COPY services/llm/main.py \
+     services/llm/graph.py \
+     services/llm/state.py \
+     services/llm/prompts.py \
+     services/llm/validator_client.py \
+     services/llm/context_normalizer.py \
+     services/llm/startup.sh \
+     ./services/llm/
 
-RUN mv ./services/llm/api/llm/v1/llm_pb2.py ./services/llm/ && \
-    mv ./services/llm/api/llm/v1/llm_pb2_grpc.py ./services/llm/ && \
-    sed -i 's|from api.llm.v1 import llm_pb2|import llm_pb2|' ./services/llm/llm_pb2_grpc.py
-
-RUN mv ./services/llm/api/lua_validator/v1/validator_pb2.py ./services/llm/ && \
-    mv ./services/llm/api/lua_validator/v1/validator_pb2_grpc.py ./services/llm/ && \
-    sed -i 's|from api.lua_validator.v1 import validator_pb2|import validator_pb2|' ./services/llm/validator_pb2_grpc.py
-
-RUN rm -rf ./services/llm/api
+RUN chmod +x ./services/llm/startup.sh
 
 WORKDIR /app/services/llm
 
+ENV PYTHONPATH=/app/services/llm/generated:/app/services/llm
+
 EXPOSE 50051
 
-CMD ["python", "main.py"]
+CMD ["./startup.sh"]

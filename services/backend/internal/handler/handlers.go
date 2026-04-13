@@ -13,6 +13,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// HealthHandler returns a simple health check response.
+func HealthHandler() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
+	}
+}
+
 type GenerateRequest struct {
 	Prompt              string          `json:"prompt"`
 	SessionID           string          `json:"session_id,omitempty"`
@@ -21,10 +28,13 @@ type GenerateRequest struct {
 }
 
 type GenerateResponse struct {
-	Code      string `json:"code,omitempty"`
-	Question  string `json:"question,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Code            string `json:"code,omitempty"`
+	Question        string `json:"question,omitempty"`
+	SessionID       string `json:"session_id,omitempty"`
+	Error           string `json:"error,omitempty"`
+	RepairCount     int32  `json:"repair_count,omitempty"`
+	ValidationOutput string `json:"validation_output,omitempty"`
+	ValidationError  string `json:"validation_error,omitempty"`
 }
 
 func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
@@ -41,6 +51,14 @@ func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
 		if req.ClarificationAnswer == "" && req.Prompt == "" {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": "prompt is required unless sending clarification_answer"})
 			return
+		}
+
+		if len(req.Context) > 0 {
+			var parsed map[string]interface{}
+			if err := json.Unmarshal(req.Context, &parsed); err != nil {
+				ctx.JSON(http.StatusBadRequest, gin.H{"error": "context must be valid JSON object: " + err.Error()})
+				return
+			}
 		}
 
 		rpcCtx, cancel := context.WithTimeout(ctx.Request.Context(), 900*time.Second)
@@ -60,8 +78,7 @@ func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
 				sr.SessionId = req.SessionID
 			}
 			if len(req.Context) > 0 {
-				s := string(req.Context)
-				sr.Context = &s
+				sr.Context = string(req.Context)
 			}
 			resp, err = client.StartOrContinue(rpcCtx, sr)
 		}
@@ -87,12 +104,25 @@ func Handler(client llmv1.LLMServiceClient) gin.HandlerFunc {
 			out.Code = resp.GetCode()
 		case llmv1.SessionPhase_ERROR:
 			out.Error = resp.GetError()
+			out.ValidationError = resp.GetValidationError()
+			out.ValidationOutput = resp.GetValidationOutput()
+			out.RepairCount = resp.GetRepairCount()
 		default:
 			if resp.GetCode() != "" {
 				out.Code = resp.GetCode()
 			} else if resp.GetClarificationQuestion() != "" {
 				out.Question = resp.GetClarificationQuestion()
+			} else if resp.GetError() != "" {
+				out.Error = resp.GetError()
+				out.ValidationError = resp.GetValidationError()
+				out.ValidationOutput = resp.GetValidationOutput()
+				out.RepairCount = resp.GetRepairCount()
 			}
+		}
+
+		if out.Error != "" && out.Code == "" && out.Question == "" {
+			ctx.JSON(http.StatusUnprocessableEntity, out)
+			return
 		}
 
 		ctx.JSON(http.StatusOK, out)
