@@ -21,19 +21,25 @@ st.markdown("""
         font-family: 'Fira Code', 'Courier New', monospace !important;
         font-size: 13px !important;
     }
+            
+    /* Кнопка Deploy */
+    [data-testid="stHeader"] button[kind="header"] {
+        display: none !important;
+    }
     
-    /* 1. Скрываем меню разработчика (три точки) */
-    #MainMenu {visibility: hidden;}
-    [data-testid="stToolbar"] {visibility: hidden;}
+    /* 2. Скрываем "бегающего человечка" (индикатор загрузки) */
+    [data-testid="stStatusWidget"] {
+        display: none !important;
+    }
     
-    /* 2. Скрываем бегающего человечка/эмодзи (индикатор загрузки) */[data-testid="stStatusWidget"] {visibility: hidden;}
+    /* 3. Скрываем надпись "Made with Streamlit" в подвале */
+    footer {
+        display: none !important;
+    }
     
-    /* 3. Скрываем надпись "Made with Streamlit" в подвале страницы */
-    footer {visibility: hidden;}
-    
-    /* 4. Убираем лишний отступ сверху, который остается после скрытия меню */
-    .block-container {
-        padding-top: 2rem !important;
+    /* 4. СКРЫВАЕМ ОКНО ОШИБКИ СОЕДИНЕНИЯ (Connection Error / Connecting) */
+    [data-testid="stConnectionStatus"] {
+        display: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
