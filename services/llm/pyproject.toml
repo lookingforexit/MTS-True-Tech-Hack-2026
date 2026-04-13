@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["main", "graph", "state", "prompts", "validator_client"]
+py-modules = ["main", "graph", "state", "prompts", "validator_client", "checker_client"]
 
 [tool.pytest.ini_options]
 testpaths = ["."]

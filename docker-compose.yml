@@ -52,11 +52,15 @@ services:
       - "50051:50051"
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      - LUA_CHECKER_HOST=lua-checker
+      - LUA_CHECKER_PORT=50053
       - LUA_VALIDATOR_HOST=lua-validator
       - LUA_VALIDATOR_PORT=50052
     depends_on:
       ollama:
         condition: service_healthy
+      lua-checker:
+        condition: service_started
       lua-validator:
         condition: service_healthy
     restart: unless-stopped

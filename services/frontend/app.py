@@ -3,6 +3,7 @@ import os
 
 import requests
 import streamlit as st
+from transport import parse_transport_content
 
 # BACKEND_URL: support both Docker internal and local dev.
 # In Docker Compose the service is reachable as "http://backend:8080".
@@ -216,6 +217,8 @@ if prompt := st.chat_input("Опишите задачу для Lua-скрипт�
         validation_error = data.get("validation_error")
         validation_output = data.get("validation_output")
         repair_count = data.get("repair_count", 0)
+        code_kind, code_content = parse_transport_content(code_str)
+        question_kind, question_content = parse_transport_content(question)
 
         if err and not code_str and not question:
             # Pure error — nothing to show
@@ -240,17 +243,29 @@ if prompt := st.chat_input("Опишите задачу для Lua-скрипт�
                 st.warning(warning_content)
 
             if code_str:
-                # Only show code if there's no error — validation passed
-                st.code(code_str, language="lua")
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": f"**Сгенерированный код:**\n\n```lua\n{code_str}\n```"}
-                )
+                if code_kind == "text":
+                    st.markdown(code_content)
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": code_content}
+                    )
+                else:
+                    rendered_code = code_content if code_kind == "lua" else code_str
+                    st.code(rendered_code, language="lua")
+                    st.session_state.messages.append(
+                        {"role": "assistant", "content": f"**Сгенерированный код:**\n\n```lua\n{rendered_code}\n```"}
+                    )
                 st.session_state.pending_session_id = None
 
             if question:
-                st.markdown(f"❓ **Уточнение:** {question}")
+                rendered_question = question_content if question_kind == "text" else question
+                if question_kind == "lua":
+                    st.code(question_content, language="lua")
+                    history_content = f"```lua\n{question_content}\n```"
+                else:
+                    st.markdown(f"❓ **Уточнение:** {rendered_question}")
+                    history_content = f"❓ **Уточнение:** {rendered_question}"
                 st.session_state.messages.append(
-                    {"role": "assistant", "content": f"❓ **Уточнение:** {question}"}
+                    {"role": "assistant", "content": history_content}
                 )
                 if session_id:
                     st.session_state.pending_session_id = session_id

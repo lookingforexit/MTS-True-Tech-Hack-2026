@@ -24,8 +24,6 @@ var forbiddenFunctions = map[string]bool{
 
 var jsonPathPattern = regexp.MustCompile(`\$(?:\.[a-zA-Z_]|\[)`)
 
-var wrapperPattern = regexp.MustCompile(`^lua\{(.*)\}lua$`)
-
 func (c *LuaChecker) Validate(code string) {
 	c.Errors = nil
 	code = strings.TrimSpace(code)
@@ -56,46 +54,11 @@ func (c *LuaChecker) Validate(code string) {
 }
 
 func (c *LuaChecker) checkWrapper(code string) string {
-	lines := strings.Split(code, "\n")
-
-	var startLine int
-	var foundStart, foundEnd bool
-
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "lua{") {
-			startLine = i + 1
-			foundStart = true
-		}
-		if strings.HasSuffix(trimmed, "}lua") {
-			foundEnd = true
-		}
+	trimmed := strings.TrimSpace(code)
+	if strings.HasPrefix(trimmed, "lua{") && strings.HasSuffix(trimmed, "}lua") {
+		return strings.TrimSpace(trimmed[4 : len(trimmed)-4])
 	}
-
-	if !foundStart && !foundEnd {
-		c.Errors = append(c.Errors, "Mistake in Line 1: Missing lua{...}lua wrapper")
-		return code
-	}
-
-	if !foundStart {
-		c.Errors = append(c.Errors, "Mistake in Line 1: Missing lua{ opening tag")
-		return code
-	}
-
-	if !foundEnd {
-		c.Errors = append(c.Errors, fmt.Sprintf("Mistake in Line %d: Missing }lua closing tag", startLine))
-		return code
-	}
-
-	content := code
-	if idx := strings.Index(content, "lua{"); idx != -1 {
-		content = content[idx+4:]
-	}
-	if idx := strings.LastIndex(content, "}lua"); idx != -1 {
-		content = content[:idx]
-	}
-
-	return content
+	return code
 }
 
 func (c *LuaChecker) checkJsonPathPreCheck(code string) {

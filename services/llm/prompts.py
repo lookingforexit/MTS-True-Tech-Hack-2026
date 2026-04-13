@@ -86,6 +86,9 @@ Rules:
 3. Fill in reasonable defaults whenever possible.
 4. Keep the goal concise and actionable.
 5. When clarification dialogue is provided, merge the user's answer into the spec. The answer is the source of truth for the user's real intent.
+6. Base the spec only on real fields visible in the provided context. Do not invent paths, helper libraries, or missing schema.
+7. The main root paths are `wf.vars` and `wf.initVariables`. Prefer them when selecting `input_path`.
+8. Do not propose JsonPath, `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, `loadstring`, or any external libraries.
 """
 
 # ── Clarifier-agent ────────────────────────────────────────────────────
@@ -135,49 +138,70 @@ Request: "Как преобразовать структуру данных та
 Input: wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES
 
 Solution:
-function ensureArray(t)
-    if type(t) ~= "table" then
-        return {t}
+local function ensure_array(value)
+    if type(value) ~= "table" then
+        local arr = _utils.array.new()
+        arr[1] = value
+        return arr
     end
-    local isArray = true
-    for k, v in pairs(t) do
+    local is_array = true
+    for k, _ in pairs(value) do
         if type(k) ~= "number" or math.floor(k) ~= k then
-            isArray = false
+            is_array = false
             break
         end
     end
-    return isArray and t or {t}
+    if is_array then
+        return _utils.array.markAsArray(value)
+    end
+    local arr = _utils.array.new()
+    arr[1] = value
+    return arr
 end
 
-function ensureAllItemsAreArrays(objectsArray)
-    if type(objectsArray) ~= "table" then
-        return objectsArray
-    end
-    for _, obj in ipairs(objectsArray) do
-        if type(obj) == "table" and obj.items then
-            obj.items = ensureArray(obj.items)
-        end
-    end
-    return objectsArray
+local packages = wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES
+if type(packages) ~= "table" then
+    return packages
 end
 
-return ensureAllItemsAreArrays(wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES)
+for _, pkg in ipairs(packages) do
+    if type(pkg) == "table" and pkg.items ~= nil then
+        pkg.items = ensure_array(pkg.items)
+    end
+end
+
+return _utils.array.markAsArray(packages)
 
 ---
 
 Example 2 — Filter rows by Discount or Markdown:
 Request: "Отфильтруй элементы из массива, чтобы включить только те, у которых есть значения в полях Discount или Markdown."
-Input: wf.vars.parsedCsv
+Input: wf.initVariables.parsedCsv
 
 Solution:
 local result = _utils.array.new()
-local items = wf.vars.parsedCsv
+local items = wf.initVariables.parsedCsv or {}
 for _, item in ipairs(items) do
-    if (item.Discount ~= "" and item.Discount ~= nil) or (item.Markdown ~= "" and item.Markdown ~= nil) then
+    if type(item) == "table" and ((item.Discount ~= "" and item.Discount ~= nil) or (item.Markdown ~= "" and item.Markdown ~= nil)) then
         table.insert(result, item)
     end
 end
 return result
+
+---
+
+Example 3 — Mark an existing table as array after transformation:
+Request: "Верни массив заказов с непустым id"
+Input: wf.vars.orders
+
+Solution:
+local filtered = {}
+for _, order in ipairs(wf.vars.orders or {}) do
+    if type(order) == "table" and order.id ~= nil and order.id ~= "" then
+        table.insert(filtered, order)
+    end
+end
+return _utils.array.markAsArray(filtered)
 """
 
 _GENERATE_BASE_PROMPT = f"""\
@@ -207,6 +231,12 @@ The code must be runnable as-is — end with `return <result>`.
 
 4. Correctness constraints
 - Generate valid standard Lua 5.4 code.
+- Use only direct Lua access through `wf.vars` or `wf.initVariables`.
+- Rely only on real fields present in the provided context and spec. Do not invent paths.
+- Do not use JsonPath.
+- Do not use external libraries.
+- Do not use `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, or `loadstring`.
+- Do not invent helper libraries or unsupported runtime APIs.
 - Prefer the simplest correct implementation.
 - Avoid non-Lua operators: +=, -=, *=, /=, &&, ||, !=
 - Use Lua idioms:
@@ -257,41 +287,47 @@ You will receive:
 EXAMPLE SOLUTIONS FOR REFERENCE:
 
 Example 1 — Ensure all items in ZCDF_PACKAGES are arrays:
-function ensureArray(t)
-    if type(t) ~= "table" then
-        return {t}
+local function ensure_array(value)
+    if type(value) ~= "table" then
+        local arr = _utils.array.new()
+        arr[1] = value
+        return arr
     end
-    local isArray = true
-    for k, v in pairs(t) do
+    local is_array = true
+    for k, _ in pairs(value) do
         if type(k) ~= "number" or math.floor(k) ~= k then
-            isArray = false
+            is_array = false
             break
         end
     end
-    return isArray and t or {t}
+    if is_array then
+        return _utils.array.markAsArray(value)
+    end
+    local arr = _utils.array.new()
+    arr[1] = value
+    return arr
 end
 
-function ensureAllItemsAreArrays(objectsArray)
-    if type(objectsArray) ~= "table" then
-        return objectsArray
-    end
-    for _, obj in ipairs(objectsArray) do
-        if type(obj) == "table" and obj.items then
-            obj.items = ensureArray(obj.items)
-        end
-    end
-    return objectsArray
+local packages = wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES
+if type(packages) ~= "table" then
+    return packages
 end
 
-return ensureAllItemsAreArrays(wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES)
+for _, pkg in ipairs(packages) do
+    if type(pkg) == "table" and pkg.items ~= nil then
+        pkg.items = ensure_array(pkg.items)
+    end
+end
+
+return _utils.array.markAsArray(packages)
 
 ---
 
 Example 2 — Filter rows by Discount or Markdown:
 local result = _utils.array.new()
-local items = wf.vars.parsedCsv
+local items = wf.initVariables.parsedCsv or {}
 for _, item in ipairs(items) do
-    if (item.Discount ~= "" and item.Discount ~= nil) or (item.Markdown ~= "" and item.Markdown ~= nil) then
+    if type(item) == "table" and ((item.Discount ~= "" and item.Discount ~= nil) or (item.Markdown ~= "" and item.Markdown ~= nil)) then
         table.insert(result, item)
     end
 end
@@ -325,10 +361,19 @@ Do not use Markdown. Do not use code fences. Do not add explanations.
 5. Environment
 - Input data is available via `wf.vars` and/or `wf.initVariables`
 - `_utils.array.new()` is available for creating new arrays
+- `_utils.array.markAsArray(arr)` is available for marking existing tables as arrays
 
 6. Style policy
 - Keep code minimal, clear, and correct.
 - No unnecessary comments.
+
+7. LowCode restrictions
+- Keep using the current Lua runtime. Do not rely on newer runtime features.
+- Use only direct Lua access through `wf.vars` or `wf.initVariables`.
+- Do not use JsonPath.
+- Do not use external libraries.
+- Do not use `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, or `loadstring`.
+- Do not invent helper libraries or unsupported runtime APIs.
 
 Final instruction:
 Return only raw Lua code.

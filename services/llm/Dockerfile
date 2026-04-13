@@ -24,6 +24,7 @@ COPY services/llm/main.py \
      services/llm/graph.py \
      services/llm/state.py \
      services/llm/prompts.py \
+     services/llm/checker_client.py \
      services/llm/validator_client.py \
      services/llm/context_normalizer.py \
      services/llm/startup.sh \

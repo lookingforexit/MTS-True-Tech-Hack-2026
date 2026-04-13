@@ -14,7 +14,7 @@ COPY pyproject.toml ./pyproject.toml
 
 RUN uv pip install --system .
 
-COPY app.py ./app.py
+COPY app.py transport.py ./ 
 
 WORKDIR /app
 
