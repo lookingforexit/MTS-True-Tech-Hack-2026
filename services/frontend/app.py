@@ -135,7 +135,7 @@ def check_backend_health() -> bool:
 # ==========================================
 # ОСНОВНОЙ ЧАТ
 # ==========================================
-st.title("🌊🥒 Ocean Cucumber")
+st.title("🌊🥒🔞 Ocean Cucumber (vanek oblysel)")
 
 # Backend connectivity indicator
 if not check_backend_health():
