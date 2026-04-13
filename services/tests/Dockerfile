@@ -14,7 +14,7 @@ COPY services/tests/pyproject.toml ./services/tests/pyproject.toml
 RUN uv pip install --no-cache-dir ./services/tests
 
 COPY proto/ ./proto/
-COPY tests/ ./tests/
+COPY services/tests/ ./tests/
 
 RUN mkdir -p /app/tests/generated && \
     touch /app/tests/generated/__init__.py && \
