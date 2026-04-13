@@ -17,7 +17,8 @@ message SessionRequest {
   string session_id = 1;
   // User's request text.
   string request = 2;
-  // JSON context to be injected into the Lua environment (required).
+  // Optional JSON context to be injected into the Lua environment.
+  // May be empty or omitted — the pipeline handles missing context gracefully.
   string context = 3;
 }
 
@@ -45,6 +46,8 @@ message SessionResponse {
   int32 repair_count = 6;
   // Validation output (stdout) if available.
   optional string validation_output = 7;
+  // Detailed validation error (stderr) if available.
+  optional string validation_error = 8;
 }
 
 enum SessionPhase {

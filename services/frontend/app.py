@@ -1,6 +1,5 @@
 import json
 import os
-
 import requests
 import streamlit as st
 
@@ -31,7 +30,7 @@ st.markdown("""
 
 # --- Инициализация состояния ---
 if "messages" not in st.session_state:
-    st.session_state.messages =[
+    st.session_state.messages = [
         {
             "role": "assistant",
             "content": (
@@ -156,7 +155,7 @@ if prompt := st.chat_input(input_placeholder):
     with st.chat_message("assistant", avatar="🥒"):
         try:
             with st.spinner("Ocean Cucumber думает..."):
-                data = call_backend(prompt)
+                data = call_backend(prompt=prompt)
         except requests.HTTPError as e:
             detail = str(e)
             if e.response is not None:
@@ -169,7 +168,7 @@ if prompt := st.chat_input(input_placeholder):
             st.session_state.messages.append({"role": "assistant", "content": f"Ошибка HTTP: {detail}"})
             st.stop()
         except requests.RequestException as e:
-            st.error(f"Не удалось связаться с бэкендом ({BACKEND_URL}): {e}")
+            st.error(f"Неизвестная ошибка при запросе к бэкенду: {e}")
             st.session_state.messages.append({"role": "assistant", "content": f"Ошибка сети: {e}"})
             st.stop()
 

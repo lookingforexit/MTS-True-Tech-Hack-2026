@@ -5,14 +5,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir uv
 
-COPY . .
+COPY pyproject.toml ./pyproject.toml
+
+RUN uv pip install --system .
+
+COPY app.py ./app.py
+
+WORKDIR /app
 
 EXPOSE 8501
 

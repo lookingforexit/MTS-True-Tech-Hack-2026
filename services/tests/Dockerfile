@@ -5,17 +5,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
 ENV UV_SYSTEM_PYTHON=1
 
 WORKDIR /app
 
-COPY services/tests/requirements.txt ./services/tests/requirements.txt
+COPY services/tests/pyproject.toml ./services/tests/pyproject.toml
 
-RUN uv pip install --no-cache-dir -r services/tests/requirements.txt
+RUN uv pip install --no-cache-dir ./services/tests
 
 COPY proto/ ./proto/
-COPY services/tests/ ./tests/
+COPY tests/ ./tests/
 
 RUN mkdir -p /app/tests/generated && \
     touch /app/tests/generated/__init__.py && \

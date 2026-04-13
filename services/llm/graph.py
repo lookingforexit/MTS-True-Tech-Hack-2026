@@ -1,14 +1,28 @@
-"""LangGraph workflow for the multi-agent deterministic LLM pipeline.
+"""LangGraph workflow for the simplified multi-agent LLM pipeline.
 
-Pipeline stages:
-    1. Spec-agent       — normalize user request into JSON spec
-    2. Clarifier-agent  — approve spec or ask one clarification question
-    3. Test-agent       — generate test cases from spec
-    4. Generator-agent  — produce N Lua candidates from spec
-    5. Validator stack  — run tests against each candidate
-    6. Repair-agent     — fix failing candidates (up to MAX_REPAIRS)
-    7. Ranker           — pick best passing candidate (shortest, simplest)
+State machine
+-------------
+    START → extract_context → spec → clarifier
+                                        │
+                        route_after_clarifier:
+                          is_ambiguous → clarification_needed (terminal, wait for user)
+                          else         → generate → validate
+                                                      │
+                                    route_after_validate:
+                                      success          → done
+                                      failure + repairs left → generate (repair loop)
+                                      failure + repairs exhausted → error
+
+Clarification resume path:
+    START → update_spec → clarifier → generate → validate → …
+
+The ``update_spec`` node is entered only when ``clarifying`` is True
+(i.e. the user has answered a clarification question).  It rebuilds the
+spec using the full clarification_history so that the answer actually
+influences the generated code.
 """
+
+from __future__ import annotations
 
 import json
 import logging
@@ -19,23 +33,21 @@ from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import START, StateGraph
 
+from context_normalizer import normalize_context_safe
 from prompts import (
     CLARIFIER_AGENT_PROMPT,
-    RANKER_PROMPT,
     SPEC_AGENT_PROMPT,
-    TEST_AGENT_PROMPT,
     make_generate_prompt,
     make_repair_prompt,
 )
 from state import PipelineState
 from validator_client import LuaValidatorClient
-from lua_context_extractor import LuaContextExtractor
 
 logger = logging.getLogger(__name__)
 
-MODEL= "qwen2.5-coder:7b-instruct-q4_K_M"
+MODEL = "qwen2.5-coder:7b-instruct-q4_K_M"
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST")
-CANDIDATE_COUNT = 3
+# Number of repair attempts allowed after the initial generation.
 MAX_REPAIRS = 2
 
 _llm_zero = ChatOllama(
@@ -50,7 +62,7 @@ _llm_generate = ChatOllama(
     model=MODEL,
     base_url=OLLAMA_HOST,
     temperature=0.8,
-    num_predict=256,
+    num_predict=512,
     num_ctx=4096,
 )
 
@@ -59,13 +71,9 @@ _validator = LuaValidatorClient(
     port=int(os.environ.get("LUA_VALIDATOR_PORT", "50052")),
 )
 
-_context_extractor = LuaContextExtractor(_validator)
-
-
 
 def detect_language(text: str) -> str:
-    """Detect whether *text* is predominantly Russian or English.
-    """
+    """Detect whether *text* is predominantly Russian or English."""
     cyrillic = sum(1 for ch in text if "\u0400" <= ch <= "\u04FF")
     latin = sum(1 for ch in text if "\u0041" <= ch <= "\u005A"
                                      or "\u0061" <= ch <= "\u007A")
@@ -92,126 +100,162 @@ def _parse_json_response(text: str) -> dict:
     return json.loads(stripped)
 
 
-def _run_candidate(code: str, tests: list[dict]) -> dict:
-    """Run one candidate against all tests. Returns a CandidateResult dict."""
-    failures = []
-    passed = 0
-    total = len(tests)
+# ── Helpers ────────────────────────────────────────────────────────────
 
-    for test_case in tests:
-        stdin = test_case.get("stdin", "")
-        expected = test_case.get("expected_output", "")
-        try:
-            result = _validator.validate(code)
-            actual_output = (result.output or "").strip()
-            expected_stripped = expected.strip()
-            if result.success and actual_output == expected_stripped:
-                passed += 1
-            else:
-                failures.append({
-                    "test_name": test_case.get("name", ""),
-                    "stdin": stdin,
-                    "expected": expected,
-                    "actual": result.output or "",
-                    "error": result.error or "",
-                })
-        except Exception as e:
-            failures.append({
-                "test_name": test_case.get("name", ""),
-                "stdin": stdin,
-                "expected": expected,
-                "actual": "",
-                "error": str(e),
-            })
+def _build_spec_user_text(
+    request: str,
+    raw_context: dict | None,
+    context_raw: str | None,
+    clarification_history: list[dict] | None,
+) -> str:
+    """Build the user message for the spec-agent.
 
-    all_passing = len(failures) == 0
-    return {
-        "all_passing": all_passing,
-        "passed_tests": passed,
-        "total_tests": total,
-        "failures": failures,
-        "char_count": len(code),
-    }
+    When *clarification_history* is non-empty the answers are appended so the
+    LLM can incorporate them into the updated spec.
+    """
+    parts: list[str] = [f"Request: {request}"]
+
+    if raw_context:
+        parts.append(
+            f"\n\nLua context:\n{json.dumps(raw_context, ensure_ascii=False, indent=2)}"
+        )
+    elif context_raw:
+        parts.append(f"\n\nAdditional context: {context_raw}")
+
+    if clarification_history:
+        history_lines: list[str] = []
+        for entry in clarification_history:
+            q = entry.get("question", "")
+            a = entry.get("answer", "")
+            history_lines.append(f"Q: {q}\nA: {a}")
+        parts.append(
+            "\n\nClarification dialogue:\n" + "\n".join(history_lines)
+        )
+
+    return "\n".join(parts)
 
 
-# Nodes
+def _call_spec_agent(user_text: str) -> tuple[str, dict]:
+    """Call the spec LLM and return ``(spec_json_string, parsed_dict)``.
 
-def extract_context_node(state: PipelineState) -> PipelineState:
-    """Extract context from the Lua environment via introspection."""
-    context_json = state.get("context")
-    if not context_json:
-        logger.info("No context provided, skipping extraction")
-        return {"extracted_context": None}
-
-    logger.info("Extracting context from Lua environment...")
-    extracted = _context_extractor.extract(context_json)
-    logger.info("Context extraction complete: %s", list(extracted.keys()) if isinstance(extracted, dict) else "non-dict result")
-    return {"extracted_context": extracted}
-
-
-def spec_node(state: PipelineState) -> PipelineState:
-    """Spec-agent: normalize user request into JSON spec."""
-    request = state["request"]
-    extracted_context = state.get("extracted_context")
-
-    user_text = f"Request: {request}"
-    if extracted_context:
-        context_str = json.dumps(extracted_context, ensure_ascii=False, indent=2)
-        user_text += f"\nExtracted context from Lua environment:\n{context_str}"
-    elif state.get("context"):
-        user_text += f"\nAdditional context: {state['context']}"
-
+    On parse failure a minimal fallback spec is returned.
+    """
     messages = [
         SystemMessage(content=SPEC_AGENT_PROMPT),
         HumanMessage(content=user_text),
     ]
+
+    logger.info("═══════════════════════════════════════════════════════")
+    logger.info("[SPEC AGENT] INPUT:\n%s", user_text)
+
     response = _llm_zero.invoke(messages)
     text = response.content
 
+    logger.info("[SPEC AGENT] OUTPUT:\n%s", text)
+    logger.info("═══════════════════════════════════════════════════════")
+
     try:
         spec = _parse_json_response(text)
-        spec_json = json.dumps(spec, ensure_ascii=False)
-        missing = spec.get("missing_critical_fields", [])
+        return json.dumps(spec, ensure_ascii=False), spec
     except (json.JSONDecodeError, KeyError) as e:
         logger.warning("Spec-agent did not return valid JSON: %s — %s", text, e)
-        # Fallback: create a minimal spec
-        spec = {
-            "task_type": "script",
-            "goal": request,
-            "input": {"source": "stdin", "format": "raw_text"},
-            "output": {"type": "stdout", "format": "raw_text"},
-            "constraints": ["standard_lua_5_4", "no_external_libs"],
-            "assumptions": [],
+        fallback = {
+            "goal": "unknown",
+            "input_path": "wf.vars",
+            "output_type": "return_value",
+            "transformation": "as requested by user",
+            "edge_cases": [],
             "need_clarification": False,
-            "missing_critical_fields": [],
+            "clarification_reason": None,
         }
-        spec_json = json.dumps(spec, ensure_ascii=False)
-        missing = []
+        return json.dumps(fallback, ensure_ascii=False), fallback
 
+
+# ── Nodes ──────────────────────────────────────────────────────────────
+
+def extract_context_node(state: PipelineState) -> PipelineState:
+    """Pass raw context through — no introspection needed."""
+    context_json = state.get("context")
+    if not context_json:
+        logger.info("No context provided, skipping")
+        return {"raw_context": None}
+
+    try:
+        parsed = json.loads(context_json)
+        logger.info("Context provided (%d bytes), passing through", len(context_json))
+        return {"raw_context": parsed}
+    except json.JSONDecodeError as e:
+        logger.warning("Context is not valid JSON: %s", e)
+        return {"raw_context": None}
+
+
+def spec_node(state: PipelineState) -> PipelineState:
+    """Spec-agent: normalize user request + context into JSON spec.
+
+    This is the **initial** spec creation.  When the pipeline is resumed
+    after a clarification answer the ``update_spec_node`` is used instead.
+    """
+    user_text = _build_spec_user_text(
+        request=state["request"],
+        raw_context=state.get("raw_context"),
+        context_raw=state.get("context"),
+        clarification_history=None,          # first run — no history yet
+    )
+    spec_json_str, spec = _call_spec_agent(user_text)
     logger.info("Spec generated: %s", spec.get("goal", "unknown"))
+    return {"spec_json": spec_json_str}
+
+
+def update_spec_node(state: PipelineState) -> PipelineState:
+    """Rebuild the spec incorporating clarification answers.
+
+    This node replaces ``spec_node`` when ``clarifying`` is True.
+    It uses the full ``clarification_history`` so the LLM can produce an
+    updated spec that reflects the user's answers.
+
+    After updating the spec we also reset ``clarification_answer`` and
+    ``clarifying`` so that the clarifier runs normally (no short-circuit).
+    """
+    user_text = _build_spec_user_text(
+        request=state["request"],
+        raw_context=state.get("raw_context"),
+        context_raw=state.get("context"),
+        clarification_history=state.get("clarification_history") or [],
+    )
+    spec_json_str, spec = _call_spec_agent(user_text)
+    logger.info("Spec updated: %s", spec.get("goal", "unknown"))
     return {
-        "spec_json": spec_json,
-        "missing_critical_fields": missing,
+        "spec_json": spec_json_str,
+        "clarification_answer": None,   # consumed
+        "clarifying": False,             # consumed
     }
 
 
 def clarifier_node(state: PipelineState) -> PipelineState:
-    """Clarifier-agent: review spec and approve or ask one question."""
-    # If user already answered a clarification, skip re-asking.
-    if state.get("clarification_answer"):
-        return {"is_ambiguous": False, "spec_approved": True}
+    """Clarifier-agent: review spec and approve or ask one question.
 
+    The clarifier **always** calls the LLM — there is no short-circuit on
+    ``clarification_answer``.  The answer has already been consumed by
+    ``update_spec_node``, so the spec here is the updated one.
+    """
     spec_json = state.get("spec_json", "")
     dialog_language = state.get("dialog_language", "en")
 
-    user_text = f"Specification:\n{spec_json}"
+    user_text = f"Specification:\n{spec_json}\n\ndialog_language: {dialog_language}"
 
     messages = [
         SystemMessage(content=CLARIFIER_AGENT_PROMPT),
-        HumanMessage(content=f"{user_text}\n\ndialog_language: {dialog_language}"),
+        HumanMessage(content=user_text),
     ]
+
+    logger.info("═══════════════════════════════════════════════════════")
+    logger.info("[CLARIFIER AGENT] INPUT:\n%s", user_text)
+
     response = _llm_zero.invoke(messages)
     text = response.content
+
+    logger.info("[CLARIFIER AGENT] OUTPUT:\n%s", text)
+    logger.info("═══════════════════════════════════════════════════════")
 
     try:
         parsed = _parse_json_response(text)
@@ -231,207 +275,140 @@ def clarifier_node(state: PipelineState) -> PipelineState:
         }
 
     logger.info("Clarifier approved the spec")
-    return {"is_ambiguous": False, "spec_approved": True}
-
-
-def test_node(state: PipelineState) -> PipelineState:
-    """Test-agent: generate test cases from the spec."""
-    spec_json = state.get("spec_json", "")
-    dialog_language = state.get("dialog_language", "en")
-
-    messages = [
-        SystemMessage(content=TEST_AGENT_PROMPT),
-        HumanMessage(content=f"Specification:\n{spec_json}"),
-    ]
-    response = _llm_zero.invoke(messages)
-    text = response.content
-
-    try:
-        parsed = _parse_json_response(text)
-        tests = parsed.get("tests", [])
-    except (json.JSONDecodeError, KeyError) as e:
-        logger.warning("Test-agent did not return valid JSON: %s — %s", text, e)
-        tests = [
-            {
-                "name": "basic",
-                "stdin": "",
-                "expected_output": "",
-                "description": "basic smoke test",
-            }
-        ]
-
-    logger.info("Generated %d test cases", len(tests))
-    return {"tests": tests}
+    return {
+        "is_ambiguous": False,
+        "clarification_question": None,
+        "spec_approved": True,
+    }
 
 
 def generate_node(state: PipelineState) -> PipelineState:
-    """Generator-agent: produce N Lua candidates from the spec."""
+    """Generator-agent: produce Lua code from the spec.
+
+    ``generation_attempt`` counts total generations starting at 1:
+    initial generation = 1, then repair #1 = 2, repair #2 = 3, etc.
+    For attempts > 1 we include validation diagnostics to drive the repair loop.
+    """
     spec_json = state.get("spec_json", "")
     dialog_language = state.get("dialog_language", "en")
-    n = CANDIDATE_COUNT
+    attempt = state.get("generation_attempt", 0) + 1
 
-    candidates = []
-    for i in range(n):
+    if attempt > 1:
+        validation_error = state.get("validation_error") or "unknown error"
+        validation_output = state.get("validation_output") or ""
+        prev_code = state.get("code") or ""
+
         user_text = (
             f"Specification:\n{spec_json}\n\n"
-            f"Generate candidate {i + 1} of {n}. "
-            f"Each candidate should be an independent solution."
+            f"Previous code (failed validation):\n{prev_code}\n\n"
+            f"Validation error: {validation_error}\n"
+            f"Validation output: {validation_output}\n\n"
+            f"Fix the code. Return ONLY raw Lua code, no markdown fences."
         )
+        system_prompt = make_repair_prompt(dialog_language)
+    else:
+        user_text = f"Specification:\n{spec_json}"
+        system_prompt = make_generate_prompt(dialog_language)
 
-        messages = [
-            SystemMessage(content=make_generate_prompt(dialog_language)),
-            HumanMessage(content=user_text),
-        ]
-        response = _llm_generate.invoke(messages)
-        code = _extract_code(response.content)
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_text),
+    ]
 
-        candidates.append({
-            "index": i,
-            "code": code,
-            "all_passing": False,
-            "passed_tests": 0,
-            "total_tests": 0,
-            "failures": [],
-            "char_count": len(code),
-        })
-        logger.info("Generated candidate %d (%d chars)", i, len(code))
+    logger.info("═══════════════════════════════════════════════════════")
+    logger.info("[GENERATOR AGENT] INPUT (attempt %d):\n%s", attempt, user_text)
 
-    return {"candidates": candidates, "candidate_count": n}
+    response = _llm_generate.invoke(messages)
+    code = _extract_code(response.content)
+
+    logger.info("[GENERATOR AGENT] OUTPUT:\n%s", code)
+    logger.info("═══════════════════════════════════════════════════════")
+
+    logger.info("Generated code (attempt %d, %d chars)", attempt, len(code))
+    return {
+        "code": code,
+        "generation_attempt": attempt,
+    }
 
 
 def validate_node(state: PipelineState) -> PipelineState:
-    """Validator stack: run all candidates against all tests."""
-    candidates = state.get("candidates") or []
-    tests = state.get("tests") or []
+    """Validator: run the generated code in lua-validator.
 
-    any_passing = False
-    for c in candidates:
-        result = _run_candidate(c["code"], tests)
-        c.update(result)
-        if c["all_passing"]:
-            any_passing = True
+    Context is normalised to a safe canonical form before being passed to the
+    validator.  When absent or malformed the default ``{"wf":{"vars":{},"initVariables":{}}}``
+    is used so the pipeline never crashes.
+    """
+    code = state.get("code") or ""
+    raw_context = state.get("context")
+    normalised_context = normalize_context_safe(raw_context)
+
+    env_vars = json.dumps({"CONTEXT_JSON": normalised_context})
+
+    logger.info("═══════════════════════════════════════════════════════")
+    logger.info("[VALIDATOR] INPUT:\n%s", code)
+    logger.info("[VALIDATOR] env_vars: %s", env_vars)
+
+    try:
+        result = _validator.validate(code, env_vars=env_vars)
+        success = result.success
+        output = result.output or ""
+        error = result.error or ""
+
+        logger.info("[VALIDATOR] OUTPUT (success=%s):\n%s", success, output)
+        if error:
+            logger.info("[VALIDATOR] ERROR:\n%s", error)
+        logger.info("═══════════════════════════════════════════════════════")
+
         logger.info(
-            "Candidate %d: %d/%d tests passing, all_passing=%s",
-            c["index"], c["passed_tests"], c["total_tests"], c["all_passing"],
+            "Validation: success=%s, output_len=%d, error_len=%d",
+            success, len(output), len(error),
         )
-
-    return {
-        "candidates": candidates,
-        "validation_success": any_passing,
-    }
-
-
-def repair_node(state: PipelineState) -> PipelineState:
-    """Repair-agent: fix failing candidates using test failure info."""
-    candidates = state.get("candidates") or []
-    spec_json = state.get("spec_json", "")
-    dialog_language = state.get("dialog_language", "en")
-    repair_count = state.get("repair_count", 0) + 1
-
-    for c in candidates:
-        if c.get("all_passing"):
-            continue  # Skip already-passing candidates
-        if not c.get("failures"):
-            continue
-
-        # Build failure summary
-        failure_summary = "\n".join(
-            f"Test '{f['test_name']}':\n"
-            f"  stdin: {f['stdin']!r}\n"
-            f"  expected: {f['expected']!r}\n"
-            f"  actual: {f['actual']!r}\n"
-            f"  error: {f['error']}"
-            for f in c["failures"]
-        )
-
-        user_text = (
-            f"Specification:\n{spec_json}\n\n"
-            f"Broken code:\n{c['code']}\n\n"
-            f"Failing tests:\n{failure_summary}\n\n"
-            f"Fix the code. Return ONLY raw Lua code, no markdown fences."
-        )
-
-        messages = [
-            SystemMessage(content=make_repair_prompt(dialog_language)),
-            HumanMessage(content=user_text),
-        ]
-        response = _llm_zero.invoke(messages)
-        new_code = _extract_code(response.content)
-        c["code"] = new_code
-        logger.info("Repaired candidate %d (%d chars), iteration %d", c["index"], len(new_code), repair_count)
-
-    # Re-validate repaired candidates
-    tests = state.get("tests") or []
-    any_passing = False
-    for c in candidates:
-        result = _run_candidate(c["code"], tests)
-        c.update(result)
-        if c["all_passing"]:
-            any_passing = True
-
-    return {
-        "candidates": candidates,
-        "validation_success": any_passing,
-        "repair_count": repair_count,
-    }
-
-
-def ranker_node(state: PipelineState) -> PipelineState:
-    """Ranker: select the best candidate from all passing ones."""
-    candidates = state.get("candidates") or []
-
-    if not candidates:
-        return {"code": "", "best_candidate_index": 0}
-
-    # Separate passing and failing
-    passing = [c for c in candidates if c.get("all_passing")]
-    if passing:
-        pool = passing
-    else:
-        # No passing candidates — pick the one with most passing tests
-        pool = candidates
-
-    # Sort by: most tests passed (desc), then shortest code (asc)
-    pool.sort(key=lambda c: (-c.get("passed_tests", 0), c.get("char_count", 999999)))
-    best = pool[0]
-
-    logger.info(
-        "Selected candidate %d (passing=%s, chars=%d)",
-        best["index"], best["all_passing"], best["char_count"],
-    )
-    return {
-        "code": best["code"],
-        "best_candidate_index": best["index"],
-    }
+        return {
+            "validation_success": success,
+            "validation_output": output,
+            "validation_error": error,
+        }
+    except Exception as e:
+        logger.exception("Validation failed with exception")
+        return {
+            "validation_success": False,
+            "validation_output": "",
+            "validation_error": str(e),
+        }
 
 
 # ── Routing ──────────────────────────────────────────────────────────────
 
-def route_after_spec(state: PipelineState) -> str:
-    """After spec: always go to clarifier."""
-    return "clarifier"
+def route_entry(state: PipelineState) -> str:
+    """Choose between initial spec creation and spec update after clarification.
+
+    - ``clarifying=True``  → the user answered a question; rebuild the spec.
+    - otherwise            → fresh run; create the spec from scratch.
+    """
+    if state.get("clarifying"):
+        return "update_spec"
+    return "spec"
 
 
 def route_after_clarifier(state: PipelineState) -> str:
-    """After clarifier: if needs question → ask user; otherwise → test."""
+    """After clarifier: if needs question → ask user; otherwise → generate."""
     if state.get("is_ambiguous"):
         return "clarification_needed"
-    return "test"
+    return "generate"
 
 
 def route_after_validate(state: PipelineState) -> str:
-    """After validate: if any passing → rank; if repairs left → repair; else → rank anyway."""
+    """After validate: if success → done; if repairs left → retry generate; else → error.
+
+    When validation fails after all repair attempts the pipeline must return an
+    **error** phase — not ``done`` — so that downstream services and the UI can
+    surface the failure with full diagnostics.
+    """
     if state.get("validation_success"):
-        return "ranker"
-    if state.get("repair_count", 0) < MAX_REPAIRS:
-        return "repair"
-    # Even if no candidates pass after all repairs, still rank to pick the best
-    return "ranker"
-
-
-def route_after_repair(state: PipelineState) -> str:
-    """After repair: go back to validate."""
-    return "validate"
+        return "done"
+    if state.get("generation_attempt", 0) <= MAX_REPAIRS:
+        return "generate"
+    return "error"
 
 
 # ── Build Graph ──────────────────────────────────────────────────────────
@@ -440,37 +417,47 @@ def build_graph():
     """Construct and compile the LangGraph workflow."""
     builder = StateGraph(PipelineState)
 
-    # Add nodes
+    # Nodes
     builder.add_node("extract_context", extract_context_node)
     builder.add_node("spec", spec_node)
+    builder.add_node("update_spec", update_spec_node)
     builder.add_node("clarifier", clarifier_node)
-    builder.add_node("test", test_node)
     builder.add_node("generate", generate_node)
     builder.add_node("validate", validate_node)
-    builder.add_node("repair", repair_node)
-    builder.add_node("ranker", ranker_node)
 
     # Edges
     builder.add_edge(START, "extract_context")
-    builder.add_edge("extract_context", "spec")
+    builder.add_conditional_edges("extract_context", route_entry, {
+        "spec": "spec",
+        "update_spec": "update_spec",
+    })
     builder.add_edge("spec", "clarifier")
+    builder.add_edge("update_spec", "clarifier")
     builder.add_conditional_edges("clarifier", route_after_clarifier, {
         "clarification_needed": "clarification_needed",
-        "test": "test",
+        "generate": "generate",
     })
-    builder.add_edge("test", "generate")
     builder.add_edge("generate", "validate")
     builder.add_conditional_edges("validate", route_after_validate, {
-        "ranker": "ranker",
-        "repair": "repair",
+        "done": "done",
+        "generate": "generate",
+        "error": "error",
     })
-    builder.add_edge("repair", "validate")
-    builder.add_edge("ranker", "done")
 
     # Terminal nodes
     builder.add_node("clarification_needed", lambda s: {"phase": "clarification_needed"})
     builder.add_node("done", lambda s: {"phase": "done"})
-    builder.add_node("error", lambda s: {"phase": "error"})
+
+    def error_node(state: PipelineState) -> PipelineState:
+        """Terminal error node — attach validation diagnostics if available."""
+        return {
+            "phase": "error",
+            "error": state.get("validation_error") or state.get("error") or "unknown error",
+            "validation_error": state.get("validation_error"),
+            "validation_output": state.get("validation_output"),
+        }
+
+    builder.add_node("error", error_node)
 
     return builder.compile()
 

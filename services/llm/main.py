@@ -13,6 +13,8 @@ Session semantics
   want a fresh run must generate a new ``session_id``.
 """
 
+from __future__ import annotations
+
 import logging
 import uuid
 from concurrent import futures
@@ -21,8 +23,9 @@ from threading import Lock
 import grpc
 from grpc_reflection.v1alpha import reflection
 
-import llm_pb2
-import llm_pb2_grpc
+from generated.api.llm.v1 import llm_pb2
+from generated.api.llm.v1 import llm_pb2_grpc
+from context_normalizer import normalize_context_safe
 from graph import detect_language, graph as pipeline_graph
 from state import PipelineState
 
@@ -55,48 +58,105 @@ def _phase_to_enum(phase: str) -> int:
 def _state_to_response(session_id: str, state: dict) -> llm_pb2.SessionResponse:
     """Convert LangGraph state to gRPC response."""
     phase = state.get("phase", "error")
+    error_msg = state.get("error")
+
+    # When validation failed after all retries, enrich the error message
+    # with diagnostics so downstream services and the UI can surface details.
+    if phase == "error" and not error_msg:
+        validation_error = state.get("validation_error")
+        validation_output = state.get("validation_output")
+        if validation_error or validation_output:
+            parts = []
+            if validation_error:
+                parts.append(f"Validation error: {validation_error}")
+            if validation_output:
+                parts.append(f"Validation output: {validation_output}")
+            error_msg = "\n".join(parts)
+
     return llm_pb2.SessionResponse(
         session_id=session_id,
         phase=_phase_to_enum(phase),
         clarification_question=state.get("clarification_question") or None,
         code=state.get("code") or None,
-        error=state.get("error") or None,
-        repair_count=state.get("repair_count", 0),
+        error=error_msg or None,
+        repair_count=max(0, state.get("generation_attempt", 0) - 1),
         validation_output=state.get("validation_output") or None,
+        validation_error=state.get("validation_error") or None,
     )
 
 
 def _make_initial_state(session_id: str, request_text: str,
                         context: str | None) -> PipelineState:
-    """Build a fresh ``PipelineState`` for a brand-new session."""
+    """Build a fresh ``PipelineState`` for a brand-new session.
+
+    The *context* string is normalised through the shared layer so that the
+    pipeline always receives a well-formed ``{"wf":{"vars":{},"initVariables":{}}}``
+    structure regardless of what the caller sent.
+    """
     dialog_language = detect_language(request_text)
+    normalised_context = normalize_context_safe(context)
     return {
         "session_id": session_id,
         "request": request_text,
-        "context": context,
-        "extracted_context": None,
+        "context": normalised_context,
         "clarification_answer": None,
-        "is_ambiguous": False,
         "clarification_question": None,
+        "clarification_history": [],
+        "is_ambiguous": False,
+        "clarifying": False,
         "spec_json": None,
-        "missing_critical_fields": [],
         "spec_approved": False,
-        "tests": None,
-        "candidates": None,
-        "candidate_count": 0,
         "code": None,
+        "generation_attempt": 0,
         "validation_success": False,
         "validation_output": None,
         "validation_error": None,
-        "repair_count": 0,
-        "last_error": None,
-        "best_candidate_index": 0,
         "phase": "running",
         "error": None,
         "dialog_language": dialog_language,
-        "original_request": request_text,
-        "clarification_history": [],
     }
+
+
+def _resume_with_clarification(
+    prev: dict,
+    answer: str,
+    graph,
+    session_id: str,
+    context,
+) -> llm_pb2.SessionResponse:
+    """Shared resume logic used by both ``StartOrContinue`` and ``AnswerClarification``.
+
+    1. Append the Q/A pair to ``clarification_history``.
+    2. Set ``clarification_answer`` and ``clarifying=True`` so the graph
+       routes through ``update_spec_node``.
+    3. Invoke the pipeline, persist the result, and always return a
+       ``SessionResponse`` even on failure.
+    """
+    hist = list(prev.get("clarification_history") or [])
+    hist.append({
+        "question": prev.get("clarification_question"),
+        "answer": answer,
+    })
+
+    resumed: PipelineState = {
+        **prev,
+        "clarification_answer": answer,
+        "clarification_history": hist,
+        "clarifying": True,
+        "phase": "running",
+    }
+
+    try:
+        result = graph.invoke(resumed)
+        _save_session(session_id, result)
+        return _state_to_response(session_id, result)
+    except Exception as e:
+        logger.exception("Pipeline failed after clarification answer")
+        error_state = {**resumed, "phase": "error", "error": str(e)}
+        _save_session(session_id, error_state)
+        context.set_code(grpc.StatusCode.INTERNAL)
+        context.set_details(str(e))
+        return _state_to_response(session_id, error_state)
 
 
 class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
@@ -111,33 +171,11 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
             phase = prev.get("phase", "error")
 
             if phase == "clarification_needed":
-                # Treat request.request as the clarification answer and resume.
-                resumed: PipelineState = {
-                    **prev,
-                    "clarification_answer": request.request,
-                    "phase": "running",
-                }
-                # Append to clarification history
-                hist = list(prev.get("clarification_history") or [])
-                hist.append({
-                    "question": prev.get("clarification_question"),
-                    "answer": request.request,
-                })
-                resumed["clarification_history"] = hist
-                try:
-                    result = pipeline_graph.invoke(resumed)
-                    _save_session(session_id, result)
-                    return _state_to_response(session_id, result)
-                except Exception as e:
-                    logger.exception("Pipeline failed after clarification")
-                    error_state = {**resumed, "phase": "error", "error": str(e)}
-                    _save_session(session_id, error_state)
-                    context.set_code(grpc.StatusCode.INTERNAL)
-                    context.set_details(str(e))
-                    return _state_to_response(session_id, error_state)
+                return _resume_with_clarification(
+                    prev, request.request, pipeline_graph, session_id, context,
+                )
 
             if phase in ("done", "error"):
-                # Session is finished — return saved state, do NOT restart.
                 return _state_to_response(session_id, prev)
 
             # Any other phase — re-run the graph with the existing state.
@@ -154,11 +192,7 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
                 return _state_to_response(session_id, error_state)
 
         # ── New session ───────────────────────────────────────────────
-        if not request.context:
-            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details("context is required")
-            return llm_pb2.SessionResponse()
-
+        session_id = session_id or uuid.uuid4().hex
         initial_state = _make_initial_state(session_id, request.request, request.context)
 
         try:
@@ -186,31 +220,9 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
             context.set_details("Session is not waiting for clarification")
             return llm_pb2.SessionResponse()
 
-        # Resume with the answer
-        resumed: PipelineState = {
-            **prev,
-            "clarification_answer": request.answer,
-            "phase": "running",
-        }
-        # Append to clarification history
-        hist = list(prev.get("clarification_history") or [])
-        hist.append({
-            "question": prev.get("clarification_question"),
-            "answer": request.answer,
-        })
-        resumed["clarification_history"] = hist
-
-        try:
-            result = pipeline_graph.invoke(resumed)
-            _save_session(session_id, result)
-            return _state_to_response(session_id, result)
-        except Exception as e:
-            logger.exception("Pipeline failed after clarification")
-            error_state = {**resumed, "phase": "error", "error": str(e)}
-            _save_session(session_id, error_state)
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(str(e))
-            return _state_to_response(session_id, error_state)
+        return _resume_with_clarification(
+            prev, request.answer, pipeline_graph, session_id, context,
+        )
 
     def GetSessionState(self, request, context):
         state = _get_session(request.session_id)
@@ -225,7 +237,6 @@ def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     llm_pb2_grpc.add_LLMServiceServicer_to_server(LLMServiceServicer(), server)
 
-    # Enable gRPC reflection so tools like grpcurl can discover the service.
     SERVICE_NAMES = (
         llm_pb2.DESCRIPTOR.services_by_name["LLMService"].full_name,
         reflection.SERVICE_NAME,
