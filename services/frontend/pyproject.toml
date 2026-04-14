@@ -11,3 +11,6 @@ dependencies = [
     "streamlit>=1.56.0",
     "requests>=2.31.0",
 ]
+
+[tool.setuptools]
+py-modules = ["app", "transport"]
