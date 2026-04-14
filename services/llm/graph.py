@@ -33,6 +33,14 @@ from validator_client import LuaValidatorClient
 
 logger = logging.getLogger(__name__)
 
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, str(default)))
+    except ValueError:
+        logger.warning("Invalid float env %s, using %s", name, default)
+        return default
+
+
 MODEL = "qwen2.5-coder:7b-instruct-q4_K_M"
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST")
 # Number of repair attempts allowed after the initial generation.
@@ -57,10 +65,12 @@ _llm_generate = ChatOllama(
 _validator = LuaValidatorClient(
     host=os.environ.get("LUA_VALIDATOR_HOST", "lua-validator"),
     port=int(os.environ.get("LUA_VALIDATOR_PORT", "50052")),
+    rpc_timeout_s=_float_env("LUA_VALIDATOR_RPC_TIMEOUT_SECONDS", 10),
 )
 _checker = LuaCheckerClient(
     host=os.environ.get("LUA_CHECKER_HOST", "lua-checker"),
     port=int(os.environ.get("LUA_CHECKER_PORT", "50053")),
+    rpc_timeout_s=_float_env("LUA_CHECKER_RPC_TIMEOUT_SECONDS", 5),
 )
 
 

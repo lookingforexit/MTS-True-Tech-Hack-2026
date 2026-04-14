@@ -147,8 +147,6 @@ func (c *LuaChecker) walk(node any) {
 	case *ast.ReturnStmt:
 		c.walkSliceExprs(n.Exprs)
 
-	case *ast.IdentExpr:
-		c.checkWfDirectAccess(n, line)
 	}
 }
 
@@ -181,9 +179,6 @@ func (c *LuaChecker) checkAttrGet(n *ast.AttrGetExpr, line int) {
 			}
 		}
 	}
-}
-
-func (c *LuaChecker) checkWfDirectAccess(n *ast.IdentExpr, line int) {
 }
 
 func (c *LuaChecker) checkFuncCall(n *ast.FuncCallExpr, line int) {

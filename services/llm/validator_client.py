@@ -9,9 +9,10 @@ from gen.api.lua_validator.v1 import validator_pb2_grpc
 class LuaValidatorClient:
     """Thin wrapper around the Lua Validator gRPC stub."""
 
-    def __init__(self, host: str = "lua-validator", port: int = 50052):
+    def __init__(self, host: str = "lua-validator", port: int = 50052, rpc_timeout_s: float = 10.0):
         self.channel = grpc.insecure_channel(f"{host}:{port}")
         self.stub = validator_pb2_grpc.LuaValidatorServiceStub(self.channel)
+        self.rpc_timeout_s = rpc_timeout_s
 
     def validate(
         self,
@@ -31,4 +32,4 @@ class LuaValidatorClient:
             env_vars=env_vars,
             timeout_ms=timeout_ms,
         )
-        return self.stub.Validate(req)
+        return self.stub.Validate(req, timeout=self.rpc_timeout_s)

@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+ARG UV_VERSION=0.11.3
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -11,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     && rm -rf /var/lib/apt/lists/* \
     && luarocks --lua-version=5.4 install dkjson \
-    && pip install --no-cache-dir uv
+    && pip install --no-cache-dir uv==${UV_VERSION}
 
 WORKDIR /app
 

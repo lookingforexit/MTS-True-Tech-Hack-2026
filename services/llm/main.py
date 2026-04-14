@@ -32,7 +32,14 @@ def _proto_state_to_dict(msg) -> PipelineState:
         "dialog_language": msg.dialog_language,
         "clarification_answer": msg.clarification_answer if msg.HasField("clarification_answer") else None,
         "clarification_question": msg.clarification_question if msg.HasField("clarification_question") else None,
-        "clarification_history": [{"question": item.question, "answer": item.answer} for item in msg.clarification_history],
+        "clarification_history": [
+            {
+                "question": item.question,
+                "answer": item.answer,
+                "target": item.target or None,
+            }
+            for item in msg.clarification_history
+        ],
         "is_ambiguous": msg.is_ambiguous,
         "clarifying": msg.clarifying,
         "spec_json": msg.spec_json if msg.HasField("spec_json") else None,
@@ -83,6 +90,7 @@ def _dict_to_proto_state(state: dict) -> llm_pb2.PipelineState:
             llm_pb2.ClarificationEntry(
                 question=item.get("question") or "",
                 answer=item.get("answer") or "",
+                target=item.get("target") or "",
             )
         )
 
@@ -153,7 +161,6 @@ def _resume_with_clarification(
     answer: str,
     graph,
     session_id: str,
-    context,
 ) -> llm_pb2.SessionResponse:
     """Shared resume logic used by both ``StartOrContinue`` and ``AnswerClarification``.
 
@@ -265,7 +272,7 @@ class LLMServiceServicer(llm_pb2_grpc.LLMServiceServicer):
             return llm_pb2.SessionResponse()
 
         return _resume_with_clarification(
-            prev, request.answer, pipeline_graph, session_id, context,
+            prev, request.answer, pipeline_graph, session_id,
         )
 
 

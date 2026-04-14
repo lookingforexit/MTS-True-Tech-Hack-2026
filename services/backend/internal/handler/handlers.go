@@ -36,7 +36,6 @@ type GenerateRequest struct {
 	Prompt              string          `json:"prompt"`
 	SessionID           string          `json:"session_id,omitempty"`
 	ClarificationAnswer string          `json:"clarification_answer,omitempty"`
-	Mode                string          `json:"mode,omitempty"`
 	Context             json.RawMessage `json:"context,omitempty"`
 }
 
@@ -48,13 +47,6 @@ type GenerateResponse struct {
 	RepairCount      int32  `json:"repair_count,omitempty"`
 	ValidationOutput string `json:"validation_output,omitempty"`
 	ValidationError  string `json:"validation_error,omitempty"`
-}
-
-func rephraseTaskQuestion(dialogLanguage string) string {
-	if strings.ToLower(dialogLanguage) == "ru" {
-		return "Не удалось надёжно сгенерировать корректный код. Пожалуйста, переформулируйте задачу точнее."
-	}
-	return "I couldn't reliably generate correct code. Please rephrase the task more precisely."
 }
 
 func wrapLuaTransport(raw string) string {
@@ -85,39 +77,6 @@ func newSessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf[:]), nil
-}
-
-func looksLikeClarificationAnswer(prompt, question string) bool {
-	trimmed := strings.TrimSpace(prompt)
-	if trimmed == "" {
-		return false
-	}
-	if strings.Contains(trimmed, "wf.vars.") || strings.Contains(trimmed, "wf.initVariables.") {
-		return true
-	}
-
-	loweredPrompt := strings.ToLower(trimmed)
-	loweredQuestion := strings.ToLower(strings.TrimSpace(question))
-	if strings.Contains(loweredQuestion, "return") || strings.Contains(loweredQuestion, "возвращ") {
-		return len(strings.Fields(trimmed)) <= 10
-	}
-	if strings.Contains(loweredQuestion, "path") || strings.Contains(loweredQuestion, "путь") {
-		if len(strings.Fields(trimmed)) <= 8 {
-			return true
-		}
-	}
-
-	newRequestMarkers := []string{
-		"write", "implement", "generate", "convert", "sort", "filter",
-		"напиши", "реализуй", "сгенерируй", "конвертируй", "отсортируй", "сделай",
-	}
-	for _, marker := range newRequestMarkers {
-		if strings.Contains(loweredPrompt, marker) {
-			return false
-		}
-	}
-
-	return len(strings.Fields(trimmed)) <= 6
 }
 
 func Handler(client llmv1.LLMServiceClient, stateStore *session.Store, lockTTL, requestTimeout time.Duration) gin.HandlerFunc {
@@ -206,19 +165,8 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store, lockTTL, 
 					pipelineState.Context = &contextValue
 				}
 			} else if pipelineState.GetPhase() == "clarification_needed" {
-				if req.Mode == "new_request" || !looksLikeClarificationAnswer(req.Prompt, pipelineState.GetClarificationQuestion()) {
-					pipelineState = &llmv1.PipelineState{
-						SessionId: req.SessionID,
-						Request:   req.Prompt,
-					}
-					if len(req.Context) > 0 {
-						contextValue := string(req.Context)
-						pipelineState.Context = &contextValue
-					}
-				} else {
-					ctx.JSON(http.StatusConflict, GenerateResponse{Error: "session is waiting for clarification_answer"})
-					return
-				}
+				ctx.JSON(http.StatusConflict, GenerateResponse{Error: "session is waiting for clarification_answer"})
+				return
 			}
 			resp, err = client.StartOrContinue(rpcCtx, &llmv1.SessionRequest{
 				PipelineState: pipelineState,
@@ -262,11 +210,6 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store, lockTTL, 
 			out.RepairCount = state.GetGenerationAttempt() - 1
 			if out.RepairCount < 0 {
 				out.RepairCount = 0
-			}
-			if state.GetClarificationQuestion() != "" {
-				out.Question = wrapTextTransport(state.GetClarificationQuestion())
-			} else {
-				out.Question = wrapTextTransport(rephraseTaskQuestion(state.GetDialogLanguage()))
 			}
 		default:
 			if state.GetCode() != "" {
