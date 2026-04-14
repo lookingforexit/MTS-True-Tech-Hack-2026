@@ -25,3 +25,15 @@ func TestWrapTextTransport(t *testing.T) {
 		t.Fatalf("wrapper should not be duplicated: %q", got)
 	}
 }
+
+func TestLooksLikeClarificationAnswer(t *testing.T) {
+	question := "What is the exact Lua path to the users data, for example `wf.vars.users`?"
+
+	if !looksLikeClarificationAnswer("wf.vars.users", question) {
+		t.Fatal("explicit Lua path should be treated as clarification answer")
+	}
+
+	if looksLikeClarificationAnswer("Write a function and return the 10th Fibonacci number", question) {
+		t.Fatal("new task reformulation should not be treated as clarification answer")
+	}
+}

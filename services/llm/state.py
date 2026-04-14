@@ -41,12 +41,12 @@ class PipelineState(TypedDict, total=False):
     # ── Clarification ────────────────────────────────────────────────
     clarification_answer: Optional[str]
     clarification_question: Optional[str]
-    clarification_history: list[dict]  # list of {"question": str, "answer": str}
+    clarification_history: list[dict]  # list of {"question": str, "answer": str, ...}
     is_ambiguous: bool
     clarifying: bool                   # True when re-running after a clarification answer
 
     # ── Spec ─────────────────────────────────────────────────────────
-    spec_json: Optional[str]           # normalized JSON spec, includes return_value and clarification metadata
+    spec_json: Optional[str]           # normalized JSON spec, includes return_value, parse status, and clarification metadata
     spec_approved: bool
 
     # ── Code generation ──────────────────────────────────────────────

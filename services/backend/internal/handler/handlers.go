@@ -36,6 +36,7 @@ type GenerateRequest struct {
 	Prompt              string          `json:"prompt"`
 	SessionID           string          `json:"session_id,omitempty"`
 	ClarificationAnswer string          `json:"clarification_answer,omitempty"`
+	Mode                string          `json:"mode,omitempty"`
 	Context             json.RawMessage `json:"context,omitempty"`
 }
 
@@ -77,6 +78,39 @@ func newSessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf[:]), nil
+}
+
+func looksLikeClarificationAnswer(prompt, question string) bool {
+	trimmed := strings.TrimSpace(prompt)
+	if trimmed == "" {
+		return false
+	}
+	if strings.Contains(trimmed, "wf.vars.") || strings.Contains(trimmed, "wf.initVariables.") {
+		return true
+	}
+
+	loweredPrompt := strings.ToLower(trimmed)
+	loweredQuestion := strings.ToLower(strings.TrimSpace(question))
+	if strings.Contains(loweredQuestion, "return") || strings.Contains(loweredQuestion, "возвращ") {
+		return len(strings.Fields(trimmed)) <= 10
+	}
+	if strings.Contains(loweredQuestion, "path") || strings.Contains(loweredQuestion, "путь") {
+		if len(strings.Fields(trimmed)) <= 8 {
+			return true
+		}
+	}
+
+	newRequestMarkers := []string{
+		"write", "implement", "generate", "convert", "sort", "filter",
+		"напиши", "реализуй", "сгенерируй", "конвертируй", "отсортируй", "сделай",
+	}
+	for _, marker := range newRequestMarkers {
+		if strings.Contains(loweredPrompt, marker) {
+			return false
+		}
+	}
+
+	return len(strings.Fields(trimmed)) <= 6
 }
 
 func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.HandlerFunc {
@@ -163,8 +197,19 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 					pipelineState.Context = &contextValue
 				}
 			} else if pipelineState.GetPhase() == "clarification_needed" {
-				ctx.JSON(http.StatusConflict, GenerateResponse{Error: "session is waiting for clarification_answer"})
-				return
+				if req.Mode == "new_request" || !looksLikeClarificationAnswer(req.Prompt, pipelineState.GetClarificationQuestion()) {
+					pipelineState = &llmv1.PipelineState{
+						SessionId: req.SessionID,
+						Request:   req.Prompt,
+					}
+					if len(req.Context) > 0 {
+						contextValue := string(req.Context)
+						pipelineState.Context = &contextValue
+					}
+				} else {
+					ctx.JSON(http.StatusConflict, GenerateResponse{Error: "session is waiting for clarification_answer"})
+					return
+				}
 			}
 			resp, err = client.StartOrContinue(rpcCtx, &llmv1.SessionRequest{
 				PipelineState: pipelineState,

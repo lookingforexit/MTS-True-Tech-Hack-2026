@@ -163,10 +163,18 @@ def _resume_with_clarification(
     3. Invoke the pipeline and always return a ``SessionResponse`` even on
        failure so the backend can persist the resulting state.
     """
+    current_target = None
+    if prev.get("spec_json"):
+        try:
+            current_target = json.loads(prev["spec_json"]).get("clarification_target")
+        except (TypeError, ValueError, KeyError):
+            current_target = None
+
     hist = list(prev.get("clarification_history") or [])
     hist.append({
         "question": prev.get("clarification_question"),
         "answer": answer,
+        "target": current_target,
     })
 
     resumed: PipelineState = {

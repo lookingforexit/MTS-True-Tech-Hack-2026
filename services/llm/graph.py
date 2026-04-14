@@ -127,11 +127,8 @@ def _build_spec_user_text(
     return "\n".join(parts)
 
 
-def _call_spec_agent(user_text: str) -> tuple[str, dict]:
-    """Call the spec LLM and return ``(spec_json_string, parsed_dict)``.
-
-    On parse failure a minimal fallback spec is returned.
-    """
+def _call_spec_agent(user_text: str) -> tuple[str, dict | None, bool]:
+    """Call the spec LLM and return ``(raw_text, parsed_dict, parse_failed)``."""
     messages = [
         SystemMessage(content=SPEC_AGENT_PROMPT),
         HumanMessage(content=user_text),
@@ -148,17 +145,10 @@ def _call_spec_agent(user_text: str) -> tuple[str, dict]:
 
     try:
         spec = _parse_json_response(text)
-        return json.dumps(spec, ensure_ascii=False), spec
+        return text, spec, False
     except (json.JSONDecodeError, KeyError) as e:
         logger.warning("Spec-agent did not return valid JSON: %s — %s", text, e)
-        fallback = {
-            "goal": "",
-            "input_path": "",
-            "output_type": "return_value",
-            "transformation": "as requested by user",
-            "return_value": "",
-        }
-        return json.dumps(fallback, ensure_ascii=False), fallback
+        return text, None, True
 
 
 # Nodes
@@ -186,12 +176,14 @@ def spec_node(state: PipelineState) -> PipelineState:
         context_raw=state.get("context"),
         clarification_history=None,          # first run — no history yet
     )
-    _, raw_spec = _call_spec_agent(user_text)
+    _, raw_spec, parse_failed = _call_spec_agent(user_text)
     spec = evaluate_spec(
         raw_spec,
         request=state["request"],
         raw_context=state.get("raw_context"),
         dialog_language=state.get("dialog_language", "en"),
+        clarification_history=state.get("clarification_history") or [],
+        parse_failed=parse_failed,
     )
     logger.info("Spec generated: %s", spec.get("goal", "unknown"))
     return {"spec_json": json.dumps(spec, ensure_ascii=False)}
@@ -204,12 +196,14 @@ def update_spec_node(state: PipelineState) -> PipelineState:
         context_raw=state.get("context"),
         clarification_history=state.get("clarification_history") or [],
     )
-    _, raw_spec = _call_spec_agent(user_text)
+    _, raw_spec, parse_failed = _call_spec_agent(user_text)
     spec = evaluate_spec(
         raw_spec,
         request=state["request"],
         raw_context=state.get("raw_context"),
         dialog_language=state.get("dialog_language", "en"),
+        clarification_history=state.get("clarification_history") or [],
+        parse_failed=parse_failed,
     )
     logger.info("Spec updated: %s", spec.get("goal", "unknown"))
     return {
@@ -226,8 +220,9 @@ def clarifier_node(state: PipelineState) -> PipelineState:
         request=state.get("request", ""),
         raw_context=state.get("raw_context"),
         dialog_language=state.get("dialog_language", "en"),
+        clarification_history=state.get("clarification_history") or [],
     )
-    decision = build_clarifier_decision(spec)
+    decision = build_clarifier_decision(spec, clarification_history=state.get("clarification_history") or [])
     logger.info("[CLARIFIER] NORMALIZED SPEC:\n%s", json.dumps(spec, ensure_ascii=False))
     logger.info("═══════════════════════════════════════════════════════")
 
@@ -239,6 +234,20 @@ def clarifier_node(state: PipelineState) -> PipelineState:
             "clarification_question": question,
             "spec_approved": False,
             "spec_json": json.dumps(spec, ensure_ascii=False),
+        }
+
+    if decision["status"] == "blocked":
+        logger.info("Clarifier blocked: %s", decision.get("reason"))
+        return {
+            "is_ambiguous": False,
+            "clarification_question": None,
+            "spec_approved": False,
+            "spec_json": json.dumps(spec, ensure_ascii=False),
+            "phase": "error",
+            "error": (
+                "Clarification is still unresolved after the same question was already asked. "
+                "Please answer that blocker directly or restart with a reformulated request."
+            ),
         }
 
     logger.info("Clarifier approved the spec")
@@ -369,6 +378,8 @@ def route_entry(state: PipelineState) -> str:
 
 
 def route_after_clarifier(state: PipelineState) -> str:
+    if state.get("phase") == "error" or state.get("error"):
+        return "error"
     if state.get("is_ambiguous"):
         return "clarification_needed"
     return "generate"
@@ -405,6 +416,7 @@ def build_graph():
     builder.add_conditional_edges("clarifier", route_after_clarifier, {
         "clarification_needed": "clarification_needed",
         "generate": "generate",
+        "error": "error",
     })
     builder.add_edge("generate", "validate")
     builder.add_conditional_edges("validate", route_after_validate, {

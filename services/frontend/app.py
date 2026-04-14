@@ -115,13 +115,16 @@ with st.sidebar:
 # ФУНКЦИЯ ОТПРАВКИ НА БЭКЕНД
 # ==========================================
 def call_backend(prompt: str) -> dict:
-    if st.session_state.pending_session_id:
+    clarification_mode = st.session_state.get("clarification_mode", "answer")
+    if st.session_state.pending_session_id and clarification_mode == "answer":
         payload = {
             "session_id": st.session_state.pending_session_id,
             "clarification_answer": prompt,
         }
     else:
         payload = {"prompt": prompt}
+        if st.session_state.pending_session_id and clarification_mode == "new_request":
+            payload["mode"] = "new_request"
         if st.session_state.json_valid and st.session_state.context_data:
             payload["context"] = st.session_state.context_data
 
@@ -147,14 +150,25 @@ def unwrap_text(raw: str) -> str:
 st.title("🌊🥒 Ocean Cucumber")
 
 if st.session_state.pending_session_id:
-    st.info("💡 Агент задал уточняющий вопрос. Пожалуйста, ответьте на него ниже.", icon="⏳")
+    st.info("💡 Сейчас можно либо ответить на уточнение, либо отправить новую задачу и сбросить pending clarification.", icon="⏳")
+    st.radio(
+        "Режим отправки",
+        options=["answer", "new_request"],
+        format_func=lambda value: "Ответить на уточнение" if value == "answer" else "Новая задача",
+        key="clarification_mode",
+        horizontal=True,
+    )
+    if st.button("Сбросить уточнение", use_container_width=True):
+        st.session_state.pending_session_id = None
+        st.session_state.clarification_mode = "answer"
+        st.rerun()
 
 for msg in st.session_state.messages:
     avatar = "🥒" if msg["role"] == "assistant" else "🧑‍💻"
     with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Ответьте на уточнение..." if st.session_state.pending_session_id else "Опишите задачу..."):
+if prompt := st.chat_input("Ответьте на уточнение или отправьте новую задачу..." if st.session_state.pending_session_id else "Опишите задачу..."):
     if is_changed:
         st.toast("Вы не сохранили JSON!", icon="⚠️")
         st.stop()
@@ -177,6 +191,7 @@ if prompt := st.chat_input("Ответьте на уточнение..." if st.s
         code_str = unwrap_lua(data.get("code"))
         question = unwrap_text(data.get("question"))
         session_id = data.get("session_id")
+        clarification_mode = st.session_state.get("clarification_mode", "answer")
 
         ans_parts =[]
         if err:
@@ -198,5 +213,9 @@ if prompt := st.chat_input("Ответьте на уточнение..." if st.s
             if not code_str and not question and not err:
                 fallback = "Пустой ответ от сервера. Попробуйте переформулировать задачу."
                 st.markdown(fallback)
+
+        if clarification_mode == "new_request" and not question:
+            st.session_state.pending_session_id = None
+        st.session_state.clarification_mode = "answer"
 
         st.session_state.messages.append({"role": "assistant", "content": "\n\n".join(ans_parts)})

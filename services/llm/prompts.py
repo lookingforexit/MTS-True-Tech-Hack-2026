@@ -48,6 +48,7 @@ Field definitions:
 CRITICAL: when to ask for clarification
 - Your target is not a perfectly complete specification.
 - Your target is a specification that is precise enough for the coding agent.
+- Use the same blocker policy as the runtime shared decision logic.
 - Only leave ambiguity when one of these blockers is genuinely unresolved:
   1. The final goal is unclear
   2. The return value cannot be inferred
@@ -64,7 +65,21 @@ Do NOT ask for clarification for:
 - type checks
 - names of helper fields or variables
 - structure details like color / value / left / right / parent
-- anything a competent programmer can implement with reasonable defaults
+- anything 
+Additional resolution rule:
+- If the user explicitly names the source entity (e.g. "variable recallTime", "object user", "array users") and the context exposes exactly one matching path, resolve that path directly and do not request clarification.
+- Do not ask the user to restate a full Lua path when the entity is already uniquely identifiable.
+- `return_value` must describe the final top-level value returned by the Lua script.
+- Good `return_value` examples:
+  - "10th Fibonacci number"
+  - "greeting string in the required format"
+  - "filtered array of rows"
+  - "index of the found element"
+  - "boolean flag indicating whether the target exists"
+  - "Lua table representing a red-black tree node"
+  - "unix timestamp parsed from recallTime"
+- Allowed canonical root paths are only `wf.vars` and `wf.initVariables`.
+- Never output `wf.InitVariables`, `wf.Vars`, or any other casing variants.
 
 EXAMPLES OF GOOD SPECS:
 
@@ -107,6 +122,7 @@ Rules:
 9. `return_value` is mandatory and must describe the actual expected result, not just the type.
 10. If the task does not depend on context data, use `__INPUT_PATH_NOT_APPLICABLE__`.
 11. If the task depends on context data but the exact path is unknown, use `__INPUT_PATH_NEEDS_CLARIFICATION__`.
+12. Never create blockers for nil/null/empty handling, fallback behavior, invalid formats, helper field names, structure internals, style, or optimization preferences.
 """
 
 # ── Clarifier policy reference ─────────────────────────────────────────
@@ -154,6 +170,19 @@ Rules:
    - style preferences
    - optimization preferences
    - anything with a reasonable default
+   - any edge case that a coding agent can handle with a sane default
+
+6a. Before asking, try to resolve the blocker from:
+   - the spec itself
+   - the original user request
+   - the context summary
+   - clarification history
+
+6b. If a blocker remains unresolved, ask exactly one targeted question for the precomputed blocker only.
+   - Good: "What should the binary search return: index, element, or true/false?"
+   - Good: "What is the exact Lua path to the users array, for example `wf.vars.users`?"
+   - Bad: "Specify the exact input path in context"
+   - Bad: "How should nil, empty arrays, and invalid formats be handled?"
 
 7. Language policy:
    The "question" field must be written in the language given by dialog_language:
@@ -195,18 +224,22 @@ local function ensure_array(value)
     return arr
 end
 
-local packages = wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES
-if type(packages) ~= "table" then
-    return packages
-end
-
-for _, pkg in ipairs(packages) do
-    if type(pkg) == "table" and pkg.items ~= nil then
-        pkg.items = ensure_array(pkg.items)
+local function transform_packages()
+    local packages = wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES
+    if type(packages) ~= "table" then
+        return packages
     end
+
+    for _, pkg in ipairs(packages) do
+        if type(pkg) == "table" and pkg.items ~= nil then
+            pkg.items = ensure_array(pkg.items)
+        end
+    end
+
+    return _utils.array.markAsArray(packages)
 end
 
-return _utils.array.markAsArray(packages)
+return transform_packages()
 
 ---
 
@@ -253,13 +286,13 @@ Rules:
 Return raw Lua code only.
 Do not use Markdown. Do not use code fences. Do not add explanations.
 The code must be runnable as-is — end with `return <result>`.
+If you define helper or main functions, the top-level program must still end with `return <function_call_or_result>`.
 
 2. Environment
 - Input data is available via `wf.vars` and/or `wf.initVariables`
 - If `input_path` is a real Lua path, use that exact path from the spec
 - If `input_path` is `__INPUT_PATH_NOT_APPLICABLE__`, do not force context access
-- `_utils.array.new()` is available for creating new arrays
-- `_utils.array.markAsArray(arr)` is available for marking tables as arrays
+- The only allowed runtime helpers are `_utils.array.new()` and `_utils.array.markAsArray(arr)`
 
 3. Behavioral constraints
 - Do not ask questions. Do not suggest alternatives. Do not explain reasoning.
@@ -270,8 +303,8 @@ The code must be runnable as-is — end with `return <result>`.
 - Generate valid standard Lua 5.4 code.
 - Use only direct Lua access through `wf.vars` or `wf.initVariables`.
 - Rely only on real fields present in the provided context and spec. Do not invent paths.
-- CRITICAL REQUIREMENT: DO EVERYTHING MANUALLY IN PLAIN LUA.
-- CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
+- CRITICAL REQUIREMENT: use only plain Lua plus `_utils.array.new()` and `_utils.array.markAsArray(arr)`.
+- CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY OTHER LIBRARY UNDER ANY CIRCUMSTANCES.
 - Do not use JsonPath.
 - Do not use external libraries.
 - Do not use `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, or `loadstring`.
@@ -284,12 +317,16 @@ The code must be runnable as-is — end with `return <result>`.
   - and / or / not for boolean logic
   - tables are 1-indexed
 - Use `goal`, `transformation`, and `return_value` as the source of truth for behavior.
+- Preserve canonical path casing exactly: only `wf.vars` and `wf.initVariables` are valid.
+- If the returned value is conceptually an array and you built it as a plain Lua table, call `_utils.array.markAsArray(result)` before returning it.
 - Choose routine implementation details yourself without asking about edge cases.
 
 5. Style policy
 - Keep code minimal, clear, and correct.
 - No unnecessary comments or boilerplate.
 - Use helper functions if the logic is complex.
+- For date/time conversions from strings, prefer deterministic manual parsing instead of host-dependent `os.time` / `os.date` behavior unless explicitly required by the spec.
+- Do not replace deterministic parsing with shortcuts such as `os.time(os.date(...))`.
 
 6. Language policy
 Code is language-neutral. If comments or user-facing strings are necessary, match dialog_language:
@@ -298,7 +335,6 @@ Code is language-neutral. If comments or user-facing strings are necessary, matc
 Do not mix languages.
 
 Final instruction:
-!!! CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
 Return only raw Lua code.
 """
 
@@ -349,18 +385,22 @@ local function ensure_array(value)
     return arr
 end
 
-local packages = wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES
-if type(packages) ~= "table" then
-    return packages
-end
-
-for _, pkg in ipairs(packages) do
-    if type(pkg) == "table" and pkg.items ~= nil then
-        pkg.items = ensure_array(pkg.items)
+local function transform_packages()
+    local packages = wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES
+    if type(packages) ~= "table" then
+        return packages
     end
+
+    for _, pkg in ipairs(packages) do
+        if type(pkg) == "table" and pkg.items ~= nil then
+            pkg.items = ensure_array(pkg.items)
+        end
+    end
+
+    return _utils.array.markAsArray(packages)
 end
 
-return _utils.array.markAsArray(packages)
+return transform_packages()
 
 ---
 
@@ -379,17 +419,19 @@ Rules:
 1. Output format
 Return raw Lua code only.
 Do not use Markdown. Do not use code fences. Do not add explanations.
+The repaired program must end with a top-level `return <result>` or `return <function_call>`.
 
 2. Repair scope
 - Fix only what is necessary to make the code pass validation.
 - Preserve the original intent from the spec.
+- Preserve `goal`, `input_path`, and `return_value` unless a direct fix requires touching them.
 - Do not replace the task with a different one.
 - Do not simplify away required behavior unless necessary to fix the error.
 
 3. Correctness constraints
 - Generate valid standard Lua 5.4 code.
-- CRITICAL REQUIREMENT: DO EVERYTHING MANUALLY IN PLAIN LUA.
-- CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
+- CRITICAL REQUIREMENT: use only plain Lua plus `_utils.array.new()` and `_utils.array.markAsArray(arr)`.
+- CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY OTHER LIBRARY UNDER ANY CIRCUMSTANCES.
 - Avoid non-Lua operators: +=, -=, *=, /=, &&, ||, !=
 - Use Lua idioms:
   - string concatenation with ..
@@ -405,6 +447,7 @@ Do not use Markdown. Do not use code fences. Do not add explanations.
 - Input data is available via `wf.vars` and/or `wf.initVariables`
 - `_utils.array.new()` is available for creating new arrays
 - `_utils.array.markAsArray(arr)` is available for marking existing tables as arrays
+- Preserve canonical path casing exactly: only `wf.vars` and `wf.initVariables` are valid
 
 6. Style policy
 - Keep code minimal, clear, and correct.
@@ -418,9 +461,11 @@ Do not use Markdown. Do not use code fences. Do not add explanations.
 - Do not use external libraries.
 - Do not use `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, or `loadstring`.
 - Do not invent helper libraries or unsupported runtime APIs.
+- Do not introduce new input paths that are absent from the spec.
+- Do not rewrite the task into another algorithm.
+- Do not replace deterministic parsing with `os.time`, `os.date`, or similar shortcuts unless the spec explicitly requires that behavior.
 
 Final instruction:
-!!! CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
 Return only raw Lua code.
 """
 
