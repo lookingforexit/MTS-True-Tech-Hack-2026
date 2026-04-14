@@ -52,7 +52,7 @@ def test_clarifier_asks_exactly_one_targeted_input_path_question():
             "return_value": "sorted users array",
         },
         request="Sort users by age descending",
-        raw_context={"wf": {"vars": {}, "initVariables": {}}},
+        raw_context={"wf": {"vars": {"people": {"users": []}}, "initVariables": {"users": []}}},
         dialog_language="en",
     )
 
@@ -71,7 +71,7 @@ def test_clarifier_blocks_repeated_question_without_new_information():
             "return_value": "sorted users array",
         },
         request="Sort users by age descending",
-        raw_context={"wf": {"vars": {}, "initVariables": {}}},
+        raw_context={"wf": {"vars": {"people": {"users": []}}, "initVariables": {"users": []}}},
         dialog_language="en",
     )
 
@@ -140,7 +140,7 @@ def test_clarifier_never_mentions_forbidden_topics():
             "return_value": "sorted users array",
         },
         request="Sort users by age descending",
-        raw_context={"wf": {"vars": {}, "initVariables": {}}},
+        raw_context={"wf": {"vars": {"people": {"users": []}}, "initVariables": {"users": []}}},
         dialog_language="en",
     )
 

@@ -180,10 +180,8 @@ if st.session_state.pending_request is not None:
             st.rerun()
 
         err = data.get("error")
-        answer_kind, answer_content = parse_transport_content(data.get("answer"))
         code_kind, code_content = parse_transport_content(data.get("code"))
         question_kind, question_content = parse_transport_content(data.get("question"))
-        answer = answer_content.strip() if answer_kind in ("text", "plain") else ""
         code_str = code_content.strip() if code_kind in ("lua", "plain") else ""
         question = question_content.strip() if question_kind in ("text", "plain") else ""
         session_id = data.get("session_id")
@@ -202,11 +200,6 @@ if st.session_state.pending_request is not None:
             if http_status in (404, 422):
                 st.session_state.pending_session_id = None
         else:
-            if answer:
-                st.markdown(answer)
-                ans_parts.append(answer)
-                st.session_state.pending_session_id = None
-
             if code_str:
                 st.code(code_str, language="lua")
                 ans_parts.append(f"**Сгенерированный код:**\n```lua\n{code_str}\n```")
@@ -218,7 +211,7 @@ if st.session_state.pending_request is not None:
                 ans_parts.append(q)
                 st.session_state.pending_session_id = session_id
 
-            if not answer and not code_str and not question and not err:
+            if not code_str and not question and not err:
                 fallback = "Пустой ответ от сервера. Попробуйте переформулировать задачу."
                 st.markdown(fallback)
                 ans_parts.append(fallback)

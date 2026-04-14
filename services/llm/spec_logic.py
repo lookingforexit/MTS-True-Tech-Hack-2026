@@ -19,6 +19,7 @@ INPUT_PATH_NOT_APPLICABLE = "__INPUT_PATH_NOT_APPLICABLE__"
 INPUT_PATH_NEEDS_CLARIFICATION = "__INPUT_PATH_NEEDS_CLARIFICATION__"
 
 ClarificationTarget = Literal["none", "goal", "return_value", "input_path"]
+TaskMode = Literal["standalone", "context_aware"]
 
 _GENERIC_GOALS = {
     "",
@@ -67,8 +68,6 @@ _IDENTIFIER_STOPWORDS = {
     "fields",
     "element",
     "elements",
-    "item",
-    "items",
     "data",
     "context",
     "goal",
@@ -97,9 +96,40 @@ _IDENTIFIER_STOPWORDS = {
     "role",
 }
 
+_CONCEPT_MARKERS = {
+    "users": ("user", "users", "people", "person", "client", "clients", "пользов", "клиент", "люд"),
+    "orders": ("order", "orders", "purchase", "purchases", "заказ", "покуп"),
+    "products": ("product", "products", "item", "items", "товар", "продукт", "позици"),
+    "rows": ("row", "rows", "record", "records", "строк", "запис"),
+    "name": ("name", "names", "first_name", "last_name", "имя", "имен", "назван"),
+    "age": ("age", "ages", "возраст", "старше", "младше", "лет"),
+    "status": ("status", "state", "статус", "состояни"),
+    "active": ("active", "enabled", "isactive", "актив"),
+    "price": ("price", "cost", "amount", "цена", "стоимост", "сумм"),
+    "id": ("id", "identifier", "идентификатор"),
+    "discount": ("discount", "скид"),
+    "markdown": ("markdown", "уцен"),
+    "target": ("target", "target_value", "целев"),
+    "date": ("date", "time", "timestamp", "дата", "время"),
+}
+
+_FIELD_CONCEPTS = {
+    "name",
+    "age",
+    "status",
+    "active",
+    "price",
+    "id",
+    "discount",
+    "markdown",
+    "target",
+    "date",
+}
+
 
 class NormalizedSpec(TypedDict):
     goal: str
+    task_mode: TaskMode
     input_path: str
     output_type: str
     transformation: str
@@ -155,6 +185,24 @@ def _extract_identifiers(text: str) -> list[str]:
     return list(dict.fromkeys(identifiers))
 
 
+def _split_identifier(value: str) -> list[str]:
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", value)
+    parts = re.split(r"[^A-Za-z0-9]+", spaced)
+    return [part.lower() for part in parts if part]
+
+
+def _extract_search_terms(text: str) -> set[str]:
+    lowered = text.lower()
+    terms = {identifier.lower() for identifier in _extract_identifiers(text)}
+    for identifier in list(terms):
+        terms.update(_split_identifier(identifier))
+
+    for canonical, markers in _CONCEPT_MARKERS.items():
+        if any(marker in lowered for marker in markers):
+            terms.add(canonical)
+    return {term for term in terms if term and term not in _IDENTIFIER_STOPWORDS}
+
+
 def _extract_canonical_path(text: str) -> str | None:
     if not text:
         return None
@@ -181,24 +229,66 @@ def _extract_entity_hint(text: str) -> str | None:
     return None
 
 
-def _candidate_parent_path(paths: list[str], identifiers: list[str]) -> str | None:
-    if not identifiers:
+def _path_terms(path: str) -> set[str]:
+    terms: set[str] = set()
+    cleaned = path.replace("[]", "")
+    for segment in cleaned.split("."):
+        terms.update(_split_identifier(segment))
+    return {term for term in terms if term and term not in {"wf", "vars", "initvariables"}}
+
+
+def _descendant_terms(paths: list[str], candidate: str) -> set[str]:
+    terms: set[str] = set()
+    prefix = candidate + "."
+    for path in paths:
+        if path == candidate or path.startswith(prefix):
+            terms.update(_path_terms(path))
+    return terms
+
+
+def _candidate_parent_path(paths: list[str], search_terms: set[str]) -> str | None:
+    if not search_terms:
         return None
 
     by_suffix: dict[str, list[str]] = {}
     for path in paths:
-        suffix = path.split(".")[-1]
+        suffix = path.split(".")[-1].lower()
         by_suffix.setdefault(suffix, []).append(path)
 
-    for ident in identifiers:
-        matches = by_suffix.get(ident, [])
+    for term in search_terms:
+        matches = by_suffix.get(term, [])
         concrete = [path for path in matches if path.count(".") >= 2]
         if len(concrete) == 1:
+            if term in _FIELD_CONCEPTS and concrete[0].count(".") >= 3:
+                continue
             return concrete[0]
 
+    for term in search_terms:
+        matches = by_suffix.get(term, [])
+        concrete = [path for path in matches if path.count(".") >= 2]
+        if len(concrete) <= 1:
+            continue
+
+        best_score = 0
+        best_paths: list[str] = []
+        for path in concrete:
+            descendant_terms = _descendant_terms(paths, path)
+            score = 8
+            score += 2 * len(search_terms & descendant_terms)
+            if score > best_score:
+                best_score = score
+                best_paths = [path]
+            elif score == best_score:
+                best_paths.append(path)
+
+        unique = list(dict.fromkeys(best_paths))
+        if len(unique) == 1 and best_score > 8:
+            return unique[0]
+        return None
+
     matched_parents: list[str] = []
-    for ident in identifiers:
-        for path in by_suffix.get(ident, []):
+    for term in search_terms:
+        for path in by_suffix.get(term, []):
             if path.count(".") >= 3:
                 matched_parents.append(path.rsplit(".", 1)[0])
 
@@ -206,6 +296,50 @@ def _candidate_parent_path(paths: list[str], identifiers: list[str]) -> str | No
     if len(unique_parents) == 1 and len(matched_parents) >= 2:
         return unique_parents[0]
 
+    candidates = [
+        path
+        for path in paths
+        if path.count(".") >= 2
+        and not path.endswith(".vars")
+        and not path.endswith(".initVariables")
+    ]
+    best_score = 0
+    best_paths: list[str] = []
+    for path in candidates:
+        suffix = path.split(".")[-1].lower()
+        path_terms = _path_terms(path)
+        descendant_terms = _descendant_terms(paths, path)
+        exact_suffix_hit = False
+
+        score = 0
+        for term in search_terms:
+            if term == suffix:
+                exact_suffix_hit = True
+                score += 8
+            elif term in path_terms:
+                score += 5
+            elif term in descendant_terms:
+                score += 2
+
+        # Prefer parent collections/objects over individual scalar fields when
+        # both match the same request terms.
+        if not exact_suffix_hit:
+            score -= max(path.count(".") - 2, 0) * 3
+        if suffix in _FIELD_CONCEPTS and path.count(".") >= 3:
+            score -= 4
+
+        if score > best_score:
+            best_score = score
+            best_paths = [path]
+        elif score == best_score and score > 0:
+            best_paths.append(path)
+
+    if best_score <= 0:
+        return None
+
+    unique = list(dict.fromkeys(best_paths))
+    if len(unique) == 1:
+        return unique[0]
     return None
 
 
@@ -250,6 +384,25 @@ def _is_meaningful_return_value(return_value: str) -> bool:
     if lowered.startswith("result ") or lowered.startswith("return "):
         return False
     return bool(return_value)
+
+
+def _context_has_data(raw_context: dict | None) -> bool:
+    if not isinstance(raw_context, dict):
+        return False
+
+    wf = raw_context.get("wf") if "wf" in raw_context else raw_context
+    if not isinstance(wf, dict):
+        return bool(wf)
+
+    for key in ("vars", "initVariables"):
+        value = wf.get(key)
+        if isinstance(value, dict):
+            if value:
+                return True
+            continue
+        if value not in (None, {}, []):
+            return True
+    return any(key not in ("vars", "initVariables") for key in wf)
 
 
 def _merge_clarification_history(
@@ -310,19 +463,29 @@ def resolve_input_path(
         return None
 
     combined_text = " ".join(part for part in (request, goal, transformation, return_value, raw_input_path) if part)
-    identifiers = _extract_identifiers(combined_text)
-    if not identifiers:
+    search_terms = _extract_search_terms(combined_text)
+    if not search_terms:
         return None
 
     root = raw_context.get("wf") if isinstance(raw_context, dict) and "wf" in raw_context else raw_context
     paths = _flatten_context_paths(root)
-    return _candidate_parent_path(paths, identifiers)
+
+    raw_input_terms = _extract_search_terms(raw_input_path)
+    if raw_input_terms:
+        resolved = _candidate_parent_path(paths, raw_input_terms)
+        if resolved:
+            return resolved
+
+    return _candidate_parent_path(paths, search_terms)
 
 
-def _needs_contextual_input(request: str, raw_input_path: str) -> bool:
-    if raw_input_path == INPUT_PATH_NEEDS_CLARIFICATION:
-        return True
+def _needs_contextual_input(request: str, raw_input_path: str, raw_context: dict | None) -> bool:
     if _extract_canonical_path(raw_input_path):
+        return True
+    if not _context_has_data(raw_context):
+        lowered = request.lower()
+        return "wf.vars" in lowered or "wf.initvariables" in lowered
+    if raw_input_path == INPUT_PATH_NEEDS_CLARIFICATION:
         return True
     if raw_input_path and raw_input_path != INPUT_PATH_NOT_APPLICABLE:
         return True
@@ -418,7 +581,7 @@ def evaluate_spec(
         transformation=transformation,
         return_value=return_value,
     )
-    needs_contextual_input = _needs_contextual_input(request, input_path)
+    needs_contextual_input = _needs_contextual_input(request, input_path, raw_context)
     no_input_confirmed = any(
         _answer_indicates_no_input(_clean_text(entry.get("answer")))
         for entry in clarification_history or []
@@ -435,6 +598,12 @@ def evaluate_spec(
         normalized_input_path = INPUT_PATH_NEEDS_CLARIFICATION
     else:
         normalized_input_path = INPUT_PATH_NOT_APPLICABLE
+
+    task_mode: TaskMode = (
+        "context_aware"
+        if normalized_input_path not in (INPUT_PATH_NOT_APPLICABLE, INPUT_PATH_NEEDS_CLARIFICATION)
+        else "standalone"
+    )
 
     clarification_target: ClarificationTarget = "none"
     clarification_reason: str | None = None
@@ -459,6 +628,7 @@ def evaluate_spec(
 
     return {
         "goal": goal,
+        "task_mode": task_mode,
         "input_path": normalized_input_path,
         "output_type": output_type,
         "transformation": transformation,

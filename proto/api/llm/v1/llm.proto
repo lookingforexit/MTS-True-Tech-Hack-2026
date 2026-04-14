@@ -41,7 +41,6 @@ message PipelineState {
 
   string phase = 18;
   optional string error = 19;
-  optional string assistant_text = 20;
 }
 
 message SessionRequest {

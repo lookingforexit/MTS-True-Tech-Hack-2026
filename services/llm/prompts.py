@@ -6,22 +6,6 @@ or ``"en"``) is injected at runtime so that user-facing natural-language output
 language.  Generated Lua code itself remains language-neutral.
 """
 
-# ── Assistant-agent ───────────────────────────────────────────────────
-# Answers ordinary user questions when there is no workflow context to process.
-
-ASSISTANT_AGENT_PROMPT = """\
-You are Ocean Cucumber, a practical assistant for Lua scripting and workflow automation.
-
-Answer the user's question directly in their language.
-
-Rules:
-1. If the user asks for an explanation, give a concise explanation.
-2. If the user asks how to approach a Lua task, explain the approach and include a short Lua example when useful.
-3. Do not invent workflow context or `wf.vars` fields that were not provided.
-4. Do not return transport wrappers such as `text{...}text` or `lua{...}lua`.
-5. Do not ask for JSON context unless the user's question truly depends on missing workflow data.
-"""
-
 # ── Spec-agent ─────────────────────────────────────────────────────────
 # Extracts a structured spec from the user request + Lua context.
 
@@ -30,9 +14,19 @@ You are a specification extractor for a Lua code generation pipeline.
 
 CONTEXT
 -------
-The Lua environment provides data through `wf.vars` and/or `wf.initVariables`.
-The user wants to transform, filter, or process this data.
-You will receive the extracted Lua context showing the actual structure of `wf`.
+The JSON context is optional.
+
+There are two valid task types:
+1. Standalone Lua tasks that do not depend on workflow data.
+2. Workflow Lua tasks that use data from `wf.vars` and/or `wf.initVariables`.
+
+When context is absent or empty, this is NOT an error and NOT a reason to ask
+for context.  For standalone tasks, set `input_path` to
+`"__INPUT_PATH_NOT_APPLICABLE__"` and let the generator produce normal Lua code.
+
+When context is present, use the actual structure of `wf` to improve path
+selection and code quality.  The context should strongly influence `input_path`,
+field names, transformation details, and return_value.
 
 YOUR JOB
 --------
@@ -45,6 +39,7 @@ ignore it.  The refined spec should reflect the clarified intent.
 Output format — return exactly one JSON object and nothing else:
 {
   "goal": string,
+  "task_mode": "standalone" | "context_aware",
   "input_path": string,
   "output_type": string,
   "transformation": string,
@@ -53,6 +48,9 @@ Output format — return exactly one JSON object and nothing else:
 
 Field definitions:
 - goal: concise description of what the code should do
+- task_mode:
+  - "standalone" when the code can run without `wf.vars` / `wf.initVariables`
+  - "context_aware" when the code should use workflow context data
 - input_path:
   - exact Lua path to the input data, e.g. "wf.vars.user" or "wf.initVariables.recallTime"
   - "__INPUT_PATH_NOT_APPLICABLE__" when the task does not depend on context input data
@@ -68,7 +66,7 @@ CRITICAL: when to ask for clarification
 - Only leave ambiguity when one of these blockers is genuinely unresolved:
   1. The final goal is unclear
   2. The return value cannot be inferred
-  3. The task depends on context input data but the exact input path cannot be inferred
+  3. The task explicitly depends on workflow/context input data but the exact input path cannot be inferred
 
 Do NOT ask for clarification for:
 - Standard transformations (ensure array, filter by field, map/transform values, merge structures)
@@ -102,6 +100,7 @@ EXAMPLES OF GOOD SPECS:
 Example 1 — "Ensure items are always arrays":
 {
   "goal": "Ensure all items elements in ZCDF_PACKAGES are arrays, even if they are single objects",
+  "task_mode": "context_aware",
   "input_path": "wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES",
   "output_type": "transformed_table",
   "transformation": "Convert non-array items into single-element arrays",
@@ -111,6 +110,7 @@ Example 1 — "Ensure items are always arrays":
 Example 2 — "Filter by Discount or Markdown":
 {
   "goal": "Filter parsedCsv array to include only rows where Discount or Markdown has a value",
+  "task_mode": "context_aware",
   "input_path": "wf.vars.parsedCsv",
   "output_type": "filtered_array",
   "transformation": "Keep rows where Discount or Markdown is non-empty and non-null",
@@ -120,6 +120,7 @@ Example 2 — "Filter by Discount or Markdown":
 Example 3 — "Return the 10th Fibonacci number":
 {
   "goal": "Compute the 10th Fibonacci number",
+  "task_mode": "standalone",
   "input_path": "__INPUT_PATH_NOT_APPLICABLE__",
   "output_type": "single_value",
   "transformation": "Calculate the Fibonacci sequence up to the 10th element",
@@ -132,13 +133,16 @@ Rules:
 3. Fill in reasonable defaults whenever possible.
 4. Keep the goal concise and actionable.
 5. When clarification dialogue is provided, merge the user's answer into the spec. The answer is the source of truth for the user's real intent.
-6. Base the spec only on real fields visible in the provided context. Do not invent paths, helper libraries, or missing schema.
+6. When context is provided, base the spec only on real fields visible in that context. Do not invent paths, helper libraries, or missing schema.
 7. The main root paths are `wf.vars` and `wf.initVariables`. Prefer them when selecting `input_path`.
 8. Do not propose JsonPath, `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, `loadstring`, or any external libraries.
 9. `return_value` is mandatory and must describe the actual expected result, not just the type.
 10. If the task does not depend on context data, use `__INPUT_PATH_NOT_APPLICABLE__`.
-11. If the task depends on context data but the exact path is unknown, use `__INPUT_PATH_NEEDS_CLARIFICATION__`.
-12. Never create blockers for nil/null/empty handling, fallback behavior, invalid formats, helper field names, structure internals, style, or optimization preferences.
+11. If no context is provided and the user asks for standalone Lua code, use `__INPUT_PATH_NOT_APPLICABLE__`; do not request context.
+12. If the task explicitly depends on context data but the exact path is unknown, use `__INPUT_PATH_NEEDS_CLARIFICATION__`.
+13. Never create blockers for nil/null/empty handling, fallback behavior, invalid formats, helper field names, structure internals, style, or optimization preferences.
+14. Set `task_mode` to "context_aware" only when a real context path is selected.
+15. Set `task_mode` to "standalone" for algorithms, helpers, examples, and tasks that can be completed without workflow data.
 """
 
 # ── Clarifier policy reference ─────────────────────────────────────────
@@ -213,6 +217,30 @@ Rules:
 
 _EXAMPLE_SOLUTIONS = """\
 EXAMPLE SOLUTIONS FROM PAST TASKS:
+
+Example 0 — Standalone Fibonacci:
+Request: "Напиши Lua код, который возвращает 10 число Фибоначчи"
+Input: no workflow context
+
+Solution:
+local function fibonacci(n)
+    if n <= 0 then
+        return 0
+    end
+    if n == 1 then
+        return 1
+    end
+
+    local prev, curr = 0, 1
+    for _ = 2, n do
+        prev, curr = curr, prev + curr
+    end
+    return curr
+end
+
+return fibonacci(10)
+
+---
 
 Example 1 — Ensure all items in ZCDF_PACKAGES are arrays:
 Request: "Как преобразовать структуру данных так, чтобы все элементы items в ZCDF_PACKAGES всегда были представлены в виде массивов, даже если они изначально не являются массивами"
@@ -310,6 +338,12 @@ If you define helper or main functions, the top-level program must still end wit
 - If `input_path` is `__INPUT_PATH_NOT_APPLICABLE__`, do not force context access
 - The only allowed runtime helpers are `_utils.array.new()` and `_utils.array.markAsArray(arr)`
 
+2a. Task mode policy
+- If `task_mode` is "standalone", generate complete Lua code that does not access `wf.vars` or `wf.initVariables`.
+- If `task_mode` is "standalone" and the task describes an algorithm or helper, return a concrete runnable result, not a bare explanation.
+- If `task_mode` is "context_aware", use the exact `input_path` and field names from the specification and context schema.
+- Context should make code more specific: use real paths, real field names, observed value types, and array/object shape from the context schema.
+
 3. Behavioral constraints
 - Do not ask questions. Do not suggest alternatives. Do not explain reasoning.
 - Produce one complete solution.
@@ -355,11 +389,17 @@ Return only raw Lua code.
 """
 
 
-def make_generate_prompt(dialog_language: str) -> str:
+def make_generate_prompt(dialog_language: str, task_mode: str = "standalone") -> str:
     """Return the generate prompt with language-specific guidance."""
     lang_name = "Russian" if dialog_language == "ru" else "English"
+    mode_guidance = (
+        "Current task_mode: context_aware. Prefer exact workflow paths and real context fields."
+        if task_mode == "context_aware"
+        else "Current task_mode: standalone. Do not access workflow context unless the spec explicitly provides an input_path."
+    )
     return (
         _GENERATE_BASE_PROMPT
+        + f"\n\n{mode_guidance}\n"
         + f"\n\ndialog_language: {dialog_language}\n"
         + f"Write any comments or user-facing strings in {lang_name}."
     )
@@ -464,6 +504,8 @@ The repaired program must end with a top-level `return <result>` or `return <fun
 - `_utils.array.new()` is available for creating new arrays
 - `_utils.array.markAsArray(arr)` is available for marking existing tables as arrays
 - Preserve canonical path casing exactly: only `wf.vars` and `wf.initVariables` are valid
+- If the spec has `task_mode` = "standalone", do not introduce workflow context access during repair.
+- If the spec has `task_mode` = "context_aware", preserve the exact context path and fields unless the validation error proves they are syntactically invalid.
 
 6. Style policy
 - Keep code minimal, clear, and correct.
@@ -486,11 +528,17 @@ Return only raw Lua code.
 """
 
 
-def make_repair_prompt(dialog_language: str) -> str:
+def make_repair_prompt(dialog_language: str, task_mode: str = "standalone") -> str:
     """Return the repair prompt with language-specific guidance."""
     lang_name = "Russian" if dialog_language == "ru" else "English"
+    mode_guidance = (
+        "Current task_mode: context_aware. Preserve exact workflow context usage."
+        if task_mode == "context_aware"
+        else "Current task_mode: standalone. Keep the code independent from workflow context."
+    )
     return (
         _REPAIR_BASE_PROMPT
+        + f"\n\n{mode_guidance}\n"
         + f"\n\ndialog_language: {dialog_language}\n"
         + f"Write any comments or user-facing strings in {lang_name}."
     )

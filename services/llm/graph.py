@@ -22,7 +22,6 @@ from langgraph.graph import START, StateGraph
 
 from context_normalizer import normalize_context_safe
 from prompts import (
-    ASSISTANT_AGENT_PROMPT,
     SPEC_AGENT_PROMPT,
     make_generate_prompt,
     make_repair_prompt,
@@ -53,14 +52,16 @@ _llm_zero = ChatOllama(
     temperature=0.2,
     num_predict=256,
     num_ctx=4096,
+    num_batch=1,
 )
 
 _llm_generate = ChatOllama(
     model=MODEL,
     base_url=OLLAMA_HOST,
-    temperature=0.8,
-    num_predict=512,
+    temperature=0.3,
+    num_predict=256,
     num_ctx=4096,
+    num_batch=1,
 )
 
 _validator = LuaValidatorClient(
@@ -75,67 +76,84 @@ _checker = LuaCheckerClient(
 )
 
 
-def _context_has_data(raw_context: dict | None) -> bool:
+def _describe_value(value: object) -> str:
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int) or isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if value is None:
+        return "null"
+    return type(value).__name__
+
+
+def _sample_scalar(value: object) -> object:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return _describe_value(value)
+
+
+def _build_context_schema(raw_context: dict | None, *, max_paths: int = 80) -> str | None:
     if not isinstance(raw_context, dict):
-        return False
+        return None
 
     wf = raw_context.get("wf") if "wf" in raw_context else raw_context
     if not isinstance(wf, dict):
-        return bool(wf)
+        return None
+    if not any(
+        isinstance(wf.get(key), dict) and wf.get(key)
+        for key in ("vars", "initVariables")
+    ) and not any(key not in ("vars", "initVariables") for key in wf):
+        return None
 
-    for key in ("vars", "initVariables"):
-        value = wf.get(key)
-        if isinstance(value, dict) and value:
-            return True
-        if value not in (None, {}, []):
-            return True
-    return any(key not in ("vars", "initVariables") for key in wf)
+    lines: list[str] = []
 
+    def walk(value: object, path: str, depth: int = 0) -> None:
+        if len(lines) >= max_paths:
+            return
+        if depth > 5:
+            lines.append(f"- {path}: {_describe_value(value)}")
+            return
 
-def _is_assistant_request(request: str, raw_context: dict | None) -> bool:
-    """Return True for ordinary questions that should not enter code generation."""
-    if _context_has_data(raw_context):
-        return False
+        if isinstance(value, dict):
+            keys = [str(key) for key in value.keys()][:12]
+            lines.append(f"- {path}: object keys={keys}")
+            for key, child in list(value.items())[:12]:
+                if isinstance(key, str):
+                    walk(child, f"{path}.{key}", depth + 1)
+            return
 
-    lowered = request.strip().lower()
-    if not lowered:
-        return False
+        if isinstance(value, list):
+            item = value[0] if value else None
+            item_type = _describe_value(item) if item is not None else "unknown"
+            lines.append(f"- {path}: array len={len(value)} item={item_type}")
+            if isinstance(item, dict):
+                sample = {key: _sample_scalar(val) for key, val in list(item.items())[:12]}
+                lines.append(f"  sample_item={json.dumps(sample, ensure_ascii=False)}")
+                for key, child in list(item.items())[:12]:
+                    if isinstance(key, str):
+                        walk(child, f"{path}[].{key}", depth + 1)
+            elif item is not None:
+                lines.append(f"  sample_item={json.dumps(_sample_scalar(item), ensure_ascii=False)}")
+            return
 
-    code_markers = (
-        "напиши код",
-        "сгенерируй код",
-        "создай код",
-        "верни lua",
-        "lua код",
-        "lua-код",
-        "script",
-        "скрипт",
-        "write code",
-        "generate code",
-        "create code",
-        "return lua",
-        "lua script",
-    )
-    if any(marker in lowered for marker in code_markers):
-        return False
+        lines.append(f"- {path}: {_describe_value(value)} sample={json.dumps(_sample_scalar(value), ensure_ascii=False)}")
 
-    assistant_markers = (
-        "что такое",
-        "почему",
-        "как работает",
-        "как сделать",
-        "как лучше",
-        "объясни",
-        "расскажи",
-        "подскажи",
-        "what is",
-        "why",
-        "how does",
-        "how to",
-        "explain",
-        "tell me",
-    )
-    return "?" in lowered or any(marker in lowered for marker in assistant_markers)
+    for root_key in ("vars", "initVariables"):
+        section = wf.get(root_key)
+        if isinstance(section, dict):
+            walk(section, f"wf.{root_key}")
+
+    if not lines:
+        return None
+    if len(lines) >= max_paths:
+        lines.append("- ... schema truncated")
+    return "\n".join(lines)
 
 
 def detect_language(text: str) -> str:
@@ -171,7 +189,7 @@ def _parse_json_response(text: str) -> dict:
 def _build_spec_user_text(
     request: str,
     raw_context: dict | None,
-    context_raw: str | None,
+    context_schema: str | None,
     clarification_history: list[dict] | None,
 ) -> str:
     """Build the user message for the spec-agent.
@@ -181,12 +199,8 @@ def _build_spec_user_text(
     """
     parts: list[str] = [f"Request: {request}"]
 
-    if raw_context:
-        parts.append(
-            f"\n\nLua context:\n{json.dumps(raw_context, ensure_ascii=False, indent=2)}"
-        )
-    elif context_raw:
-        parts.append(f"\n\nAdditional context: {context_raw}")
+    if context_schema:
+        parts.append(f"\n\nContext schema summary:\n{context_schema}")
 
     if clarification_history:
         history_lines: list[str] = []
@@ -225,46 +239,29 @@ def _call_spec_agent(user_text: str) -> tuple[str, dict | None, bool]:
         return text, None, True
 
 
-def _call_assistant_agent(request: str, dialog_language: str) -> str:
-    messages = [
-        SystemMessage(content=ASSISTANT_AGENT_PROMPT),
-        HumanMessage(content=f"dialog_language: {dialog_language}\n\nUser question:\n{request}"),
-    ]
-
-    logger.info("═══════════════════════════════════════════════════════")
-    logger.info("[ASSISTANT AGENT] INPUT:\n%s", request)
-
-    response = _llm_zero.invoke(messages)
-    text = str(response.content).strip()
-
-    logger.info("[ASSISTANT AGENT] OUTPUT:\n%s", text)
-    logger.info("═══════════════════════════════════════════════════════")
-    return text
-
-
 # Nodes
 
 def extract_context_node(state: PipelineState) -> PipelineState:
-    """Pass raw context through — no introspection needed."""
+    """Parse context and build a compact schema summary for prompt grounding."""
     context_json = state.get("context")
     if not context_json:
         logger.info("No context provided, skipping")
-        return {"raw_context": None}
+        return {"raw_context": None, "context_schema": None}
 
     try:
         parsed = json.loads(context_json)
         logger.info("Context provided (%d bytes), passing through", len(context_json))
-        return {"raw_context": parsed}
+        return {"raw_context": parsed, "context_schema": _build_context_schema(parsed)}
     except json.JSONDecodeError as e:
         logger.warning("Context is not valid JSON: %s", e)
-        return {"raw_context": None}
+        return {"raw_context": None, "context_schema": None}
 
 
 def spec_node(state: PipelineState) -> PipelineState:
     user_text = _build_spec_user_text(
         request=state["request"],
         raw_context=state.get("raw_context"),
-        context_raw=state.get("context"),
+        context_schema=state.get("context_schema"),
         clarification_history=None,          # first run — no history yet
     )
     _, raw_spec, parse_failed = _call_spec_agent(user_text)
@@ -280,24 +277,11 @@ def spec_node(state: PipelineState) -> PipelineState:
     return {"spec_json": json.dumps(spec, ensure_ascii=False)}
 
 
-def assistant_node(state: PipelineState) -> PipelineState:
-    answer = _call_assistant_agent(
-        request=state.get("request", ""),
-        dialog_language=state.get("dialog_language", "en"),
-    )
-    return {
-        "assistant_text": answer,
-        "code": None,
-        "validation_success": True,
-        "phase": "done",
-    }
-
-
 def update_spec_node(state: PipelineState) -> PipelineState:
     user_text = _build_spec_user_text(
         request=state["request"],
         raw_context=state.get("raw_context"),
-        context_raw=state.get("context"),
+        context_schema=state.get("context_schema"),
         clarification_history=state.get("clarification_history") or [],
     )
     _, raw_spec, parse_failed = _call_spec_agent(user_text)
@@ -366,6 +350,12 @@ def clarifier_node(state: PipelineState) -> PipelineState:
 def generate_node(state: PipelineState) -> PipelineState:
     spec_json = state.get("spec_json", "")
     dialog_language = state.get("dialog_language", "en")
+    context_schema = state.get("context_schema")
+    try:
+        spec = json.loads(spec_json) if spec_json else {}
+    except json.JSONDecodeError:
+        spec = {}
+    task_mode = spec.get("task_mode") or "standalone"
     attempt = state.get("generation_attempt", 0) + 1
 
     if attempt > 1:
@@ -375,15 +365,19 @@ def generate_node(state: PipelineState) -> PipelineState:
 
         user_text = (
             f"Specification:\n{spec_json}\n\n"
+            f"Context schema summary:\n{context_schema or 'No workflow context provided.'}\n\n"
             f"Previous code (failed validation):\n{prev_code}\n\n"
             f"Validation error: {validation_error}\n"
             f"Validation output: {validation_output}\n\n"
             f"Fix the code. Return ONLY raw Lua code, no markdown fences."
         )
-        system_prompt = make_repair_prompt(dialog_language)
+        system_prompt = make_repair_prompt(dialog_language, task_mode=task_mode)
     else:
-        user_text = f"Specification:\n{spec_json}"
-        system_prompt = make_generate_prompt(dialog_language)
+        user_text = (
+            f"Specification:\n{spec_json}\n\n"
+            f"Context schema summary:\n{context_schema or 'No workflow context provided.'}"
+        )
+        system_prompt = make_generate_prompt(dialog_language, task_mode=task_mode)
 
     messages = [
         SystemMessage(content=system_prompt),
@@ -478,8 +472,6 @@ def validate_node(state: PipelineState) -> PipelineState:
 def route_entry(state: PipelineState) -> str:
     if state.get("clarifying"):
         return "update_spec"
-    if _is_assistant_request(state.get("request", ""), state.get("raw_context")):
-        return "assistant"
     return "spec"
 
 
@@ -505,7 +497,6 @@ def build_graph():
 
     # Nodes
     builder.add_node("extract_context", extract_context_node)
-    builder.add_node("assistant", assistant_node)
     builder.add_node("spec", spec_node)
     builder.add_node("update_spec", update_spec_node)
     builder.add_node("clarifier", clarifier_node)
@@ -515,7 +506,6 @@ def build_graph():
     # Edges
     builder.add_edge(START, "extract_context")
     builder.add_conditional_edges("extract_context", route_entry, {
-        "assistant": "assistant",
         "spec": "spec",
         "update_spec": "update_spec",
     })

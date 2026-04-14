@@ -36,6 +36,7 @@ class PipelineState(TypedDict, total=False):
     request: str
     context: Optional[str]            # Raw JSON context string from backend
     raw_context: Optional[dict]       # Parsed JSON context (passed through, no introspection)
+    context_schema: Optional[str]     # Compact deterministic schema summary for prompt grounding
     dialog_language: str              # "ru" | "en"
 
     # ── Clarification ────────────────────────────────────────────────
@@ -61,4 +62,3 @@ class PipelineState(TypedDict, total=False):
     # ── Phase / output ───────────────────────────────────────────────
     phase: str  # "running" | "clarification_needed" | "done" | "error"
     error: Optional[str]
-    assistant_text: Optional[str]

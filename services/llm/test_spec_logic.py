@@ -256,3 +256,57 @@ def test_case_11_forbidden_question_topics_are_not_present_in_spec():
     assert "invalid format" not in serialized
     assert "style" not in serialized
     assert "optimization" not in serialized
+
+
+def test_case_12_path_scoring_prefers_collection_over_matching_field():
+    spec = evaluate_spec(
+        {
+            "goal": "Return names of active users older than 18",
+            "input_path": "",
+            "output_type": "filtered_array",
+            "transformation": "Filter active users by age and return names",
+            "return_value": "array of user names",
+        },
+        request="Верни имена активных пользователей старше 18 лет",
+        raw_context=_context(
+            {
+                "vars": {
+                    "users": [{"name": "Ann", "age": 30, "active": True}],
+                    "orders": [{"age": 2, "status": "paid"}],
+                },
+                "initVariables": {},
+            }
+        ),
+        dialog_language="ru",
+    )
+
+    assert spec["input_path"] == "wf.vars.users"
+    assert spec["task_mode"] == "context_aware"
+    assert spec["clarification_required"] is False
+
+
+def test_case_13_path_scoring_uses_russian_domain_terms():
+    spec = evaluate_spec(
+        {
+            "goal": "Count paid orders",
+            "input_path": "",
+            "output_type": "single_value",
+            "transformation": "Count orders with paid status",
+            "return_value": "number of paid orders",
+        },
+        request="Посчитай оплаченные заказы",
+        raw_context=_context(
+            {
+                "vars": {
+                    "orders": [{"status": "paid", "amount": 100}],
+                    "users": [{"status": "active"}],
+                },
+                "initVariables": {},
+            }
+        ),
+        dialog_language="ru",
+    )
+
+    assert spec["input_path"] == "wf.vars.orders"
+    assert spec["task_mode"] == "context_aware"
+    assert spec["clarification_required"] is False
