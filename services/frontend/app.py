@@ -51,14 +51,16 @@ if "messages" not in st.session_state:
 if "pending_session_id" not in st.session_state:
     st.session_state.pending_session_id = None
 
-# Состояния для умного сохранения JSON
+# Состояния для автосохранения JSON
 default_json = '{\n  "wf": {\n    "vars": {}\n  }\n}'
-if "saved_json" not in st.session_state:
-    st.session_state.saved_json = default_json
+if "context_json" not in st.session_state:
+    st.session_state.context_json = default_json
 if "context_data" not in st.session_state:
     st.session_state.context_data = {"wf": {"vars": {}}}
 if "json_valid" not in st.session_state:
     st.session_state.json_valid = True
+if "json_error" not in st.session_state:
+    st.session_state.json_error = ""
 
 
 # ==========================================
@@ -68,39 +70,28 @@ with st.sidebar:
     st.header("⚙️ Контекст (JSON)")
     st.caption("Укажите переменные, которые будут доступны модели:")
     
-    # Текстовое поле всегда отображает текущий ввод пользователя
     current_input = st.text_area(
         "JSON", 
-        value=st.session_state.saved_json, 
         height=350, 
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="context_json",
     )
-    
-    # Проверяем, изменил ли пользователь текст по сравнению с сохраненным
-    is_changed = current_input != st.session_state.saved_json
-    
-    if is_changed:
-        st.warning("⚠️ Внесены изменения. Сохраните их!")
-        # Кнопка появляется только при изменениях
-        if st.button("💾 Сохранить JSON", type="primary", use_container_width=True):
-            try:
-                # Пытаемся распарсить
-                parsed = json.loads(current_input)
-                # Если успешно - обновляем состояния
-                st.session_state.context_data = parsed
-                st.session_state.saved_json = current_input
-                st.session_state.json_valid = True
-                # Перезагружаем интерфейс, чтобы скрыть кнопку и показать Success
-                st.rerun()
-            except json.JSONDecodeError as e:
-                st.session_state.json_valid = False
-                st.error(f"❌ Ошибка JSON: {e}")
+
+    try:
+        parsed = json.loads(current_input)
+        if not isinstance(parsed, dict):
+            raise ValueError("JSON должен быть объектом")
+        st.session_state.context_data = parsed
+        st.session_state.json_valid = True
+        st.session_state.json_error = ""
+    except (json.JSONDecodeError, ValueError) as e:
+        st.session_state.json_valid = False
+        st.session_state.json_error = str(e)
+
+    if st.session_state.json_valid:
+        st.success("✅ JSON валиден и сохранен")
     else:
-        # Если изменений нет, просто показываем статус
-        if st.session_state.json_valid:
-            st.success("✅ JSON валиден и сохранен")
-        else:
-            st.error("❌ В сохраненном JSON есть ошибки")
+        st.error(f"❌ Ошибка JSON: {st.session_state.json_error}")
 
 
 # ==========================================
@@ -129,10 +120,8 @@ st.title("🌊🥒 Ocean Cucumber")
 if st.session_state.pending_session_id:
     st.info("💡 Агент задал уточняющий вопрос. Пожалуйста, ответьте на него ниже.", icon="⏳")
 
-chat_disabled = is_changed or not st.session_state.json_valid
-if is_changed:
-    st.warning("Сначала сохраните JSON в боковой панели, затем отправьте сообщение.")
-elif not st.session_state.json_valid:
+chat_disabled = not st.session_state.json_valid
+if not st.session_state.json_valid:
     st.warning("Исправьте ошибку JSON в боковой панели, затем отправьте сообщение.")
 
 for msg in st.session_state.messages:
