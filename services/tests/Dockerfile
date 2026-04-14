@@ -28,4 +28,4 @@ ENV PYTHONPATH=/app/tests/gen:/app/tests
 
 WORKDIR /app/tests
 
-CMD ["pytest", "-v", "test_local_script.py", "--html=reports/report.html", "--self-contained-html"]
+CMD ["sh", "-c", "rm -f reports/report.html && pytest -v test_local_script.py --html=reports/report.html --self-contained-html"]

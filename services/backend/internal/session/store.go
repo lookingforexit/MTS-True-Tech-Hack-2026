@@ -27,6 +27,10 @@ func key(sessionID string) string {
 	return "pipeline_state:" + sessionID
 }
 
+func lockKey(sessionID string) string {
+	return "pipeline_state_lock:" + sessionID
+}
+
 func (s *Store) Get(ctx context.Context, sessionID string) (*llmv1.PipelineState, error) {
 	if sessionID == "" {
 		return nil, nil
@@ -59,4 +63,29 @@ func (s *Store) Save(ctx context.Context, sessionID string, state *llmv1.Pipelin
 	}
 
 	return s.redisDB.Set(ctx, key(sessionID), data, s.timeout).Err()
+}
+
+func (s *Store) Ping(ctx context.Context) error {
+	return s.redisDB.Ping(ctx).Err()
+}
+
+func (s *Store) Lock(ctx context.Context, sessionID, token string, timeout time.Duration) (bool, error) {
+	if sessionID == "" || token == "" {
+		return false, errors.New("session id and lock token required")
+	}
+	return s.redisDB.SetNX(ctx, lockKey(sessionID), token, timeout).Result()
+}
+
+func (s *Store) Unlock(ctx context.Context, sessionID, token string) error {
+	if sessionID == "" || token == "" {
+		return errors.New("session id and lock token required")
+	}
+
+	const script = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	return redis.call("DEL", KEYS[1])
+end
+return 0
+`
+	return s.redisDB.Eval(ctx, script, []string{lockKey(sessionID)}, token).Err()
 }

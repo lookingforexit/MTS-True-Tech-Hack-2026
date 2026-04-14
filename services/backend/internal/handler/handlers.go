@@ -18,9 +18,16 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// HealthHandler returns a simple health check response.
-func HealthHandler() gin.HandlerFunc {
+// HealthHandler returns a health check response and verifies Redis connectivity.
+func HealthHandler(stateStore *session.Store) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		if err := stateStore.Ping(ctx.Request.Context()); err != nil {
+			ctx.JSON(http.StatusServiceUnavailable, gin.H{
+				"status": "unhealthy",
+				"redis":  err.Error(),
+			})
+			return
+		}
 		ctx.JSON(http.StatusOK, gin.H{"status": "ok"})
 	}
 }
@@ -110,6 +117,25 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 		var resp *llmv1.SessionResponse
 		var err error
 
+		lockToken, err := newSessionID()
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate lock token: " + err.Error()})
+			return
+		}
+
+		locked, err := stateStore.Lock(rpcCtx, req.SessionID, lockToken, 20*time.Minute)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !locked {
+			ctx.JSON(http.StatusConflict, GenerateResponse{Error: "session is already processing"})
+			return
+		}
+		defer func() {
+			_ = stateStore.Unlock(context.Background(), req.SessionID, lockToken)
+		}()
+
 		pipelineState, err := stateStore.Get(rpcCtx, req.SessionID)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -133,7 +159,8 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 					Request:   req.Prompt,
 				}
 				if len(req.Context) > 0 {
-					pipelineState.Context = new(string(req.Context))
+					contextValue := string(req.Context)
+					pipelineState.Context = &contextValue
 				}
 			} else if pipelineState.GetPhase() == "clarification_needed" {
 				ctx.JSON(http.StatusConflict, GenerateResponse{Error: "session is waiting for clarification_answer"})

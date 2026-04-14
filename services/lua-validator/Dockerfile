@@ -8,21 +8,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     lua5.4-dev \
     luarocks \
     ca-certificates \
+    make \
     && rm -rf /var/lib/apt/lists/* \
     && luarocks --lua-version=5.4 install dkjson \
     && pip install --no-cache-dir uv
 
 WORKDIR /app
 
+COPY proto ./proto
 COPY services/lua-validator/pyproject.toml ./services/lua-validator/pyproject.toml
 
 RUN uv pip install --system ./services/lua-validator
 
 # Copy local gRPC stubs (nested package structure)
-COPY services/lua-validator/gen ./services/lua-validator/gen
+COPY services/lua-validator ./services/lua-validator
 
-# Copy service source
-COPY services/lua-validator/main.py ./services/lua-validator/main.py
+RUN cd services/lua-validator && make generate-python PROTO_ROOT=/app/proto
 
 WORKDIR /app/services/lua-validator
 

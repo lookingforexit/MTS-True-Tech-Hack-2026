@@ -65,11 +65,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 50051)); s.close()\" || { [ -f /proc/1/cmdline ] && tr '\\0' ' ' < /proc/1/cmdline | grep -q './startup.sh'; }"]
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost', 50051)); s.close()\""]
       interval: 15s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 1800s
 
   # ── Backend (Go / Gin) ────────────────────────────────────
   backend:

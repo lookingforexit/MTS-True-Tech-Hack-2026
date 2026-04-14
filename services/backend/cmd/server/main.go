@@ -34,7 +34,7 @@ func main() {
 	llmClient := llmv1.NewLLMServiceClient(conn)
 
 	router := gin.Default()
-	router.GET("/health", handler.HealthHandler())
+	router.GET("/health", handler.HealthHandler(stateStore))
 	router.POST("/generate", handler.Handler(llmClient, stateStore))
 
 	addr := fmt.Sprintf(":%s", cfg.Port)

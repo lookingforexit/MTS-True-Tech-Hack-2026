@@ -1,6 +1,6 @@
 .PHONY: generate-python
 
-PROTO_ROOT := ../../proto
+PROTO_ROOT ?= ../../proto
 PY_OUT := gen
 PY_PACKAGES := \
 	$(PY_OUT) \

@@ -8,6 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    make \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv
 
@@ -16,19 +17,9 @@ COPY services/llm/pyproject.toml ./services/llm/pyproject.toml
 
 RUN uv pip install --system ./services/llm
 
-# Copy local gRPC stubs (nested package structure)
-COPY services/llm/gen ./services/llm/gen
+COPY services/llm ./services/llm
 
-# Copy service source
-COPY services/llm/main.py \
-     services/llm/graph.py \
-     services/llm/state.py \
-     services/llm/prompts.py \
-     services/llm/checker_client.py \
-     services/llm/validator_client.py \
-     services/llm/context_normalizer.py \
-     services/llm/startup.sh \
-     ./services/llm/
+RUN cd services/llm && make generate-python PROTO_ROOT=/app/proto
 
 RUN chmod +x ./services/llm/startup.sh
 
