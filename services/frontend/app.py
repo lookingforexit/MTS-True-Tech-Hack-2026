@@ -28,6 +28,11 @@ st.markdown("""
     [data-testid="stHeader"] button[kind="header"] {
         display: none !important;
     }
+
+    /* Стандартный индикатор выполнения Streamlit в правом верхнем углу */
+    [data-testid="stStatusWidget"] {
+        display: none !important;
+    }
     
     /* 3. Скрываем надпись "Made with Streamlit" в подвале */
     footer {
