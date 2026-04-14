@@ -18,12 +18,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY proto ./proto
-COPY services/lua-validator/pyproject.toml ./services/lua-validator/pyproject.toml
+COPY services/lua-validator ./services/lua-validator
 
 RUN uv pip install --system ./services/lua-validator
-
-# Copy local gRPC stubs (nested package structure)
-COPY services/lua-validator ./services/lua-validator
 
 RUN cd services/lua-validator && make generate-python PROTO_ROOT=/app/proto
 

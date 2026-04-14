@@ -29,3 +29,4 @@ tests/reports
 
 # Auto-generated files (regenerated during build)
 requirements.txt
+services/*/gen

@@ -9,7 +9,7 @@ ENV UV_SYSTEM_PYTHON=1
 
 WORKDIR /app
 
-COPY services/tests/pyproject.toml ./services/tests/pyproject.toml
+COPY services/tests/ ./services/tests/
 
 RUN uv pip install --no-cache-dir ./services/tests
 

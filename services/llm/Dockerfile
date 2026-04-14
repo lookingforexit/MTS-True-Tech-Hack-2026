@@ -15,11 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && pip install --no-cache-dir uv==${UV_VERSION}
 
 COPY proto ./proto
-COPY services/llm/pyproject.toml ./services/llm/pyproject.toml
+COPY services/llm ./services/llm
 
 RUN uv pip install --system ./services/llm
-
-COPY services/llm ./services/llm
 
 RUN cd services/llm && make generate-python PROTO_ROOT=/app/proto
 

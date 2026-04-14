@@ -12,11 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv==${UV_VERSION}
 
-COPY pyproject.toml ./pyproject.toml
+COPY pyproject.toml README.md app.py transport.py ./
 
 RUN uv pip install --system .
-
-COPY app.py transport.py ./ 
 
 WORKDIR /app
 
