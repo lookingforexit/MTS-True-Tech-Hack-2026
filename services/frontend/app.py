@@ -29,18 +29,8 @@ st.markdown("""
         display: none !important;
     }
     
-    /* 2. Скрываем "бегающего человечка" (индикатор загрузки) */
-    [data-testid="stStatusWidget"] {
-        display: none !important;
-    }
-    
     /* 3. Скрываем надпись "Made with Streamlit" в подвале */
     footer {
-        display: none !important;
-    }
-    
-    /* 4. СКРЫВАЕМ ОКНО ОШИБКИ СОЕДИНЕНИЯ (Connection Error / Connecting) */
-    [data-testid="stConnectionStatus"] {
         display: none !important;
     }
     </style>
@@ -139,19 +129,21 @@ st.title("🌊🥒 Ocean Cucumber")
 if st.session_state.pending_session_id:
     st.info("💡 Агент задал уточняющий вопрос. Пожалуйста, ответьте на него ниже.", icon="⏳")
 
+chat_disabled = is_changed or not st.session_state.json_valid
+if is_changed:
+    st.warning("Сначала сохраните JSON в боковой панели, затем отправьте сообщение.")
+elif not st.session_state.json_valid:
+    st.warning("Исправьте ошибку JSON в боковой панели, затем отправьте сообщение.")
+
 for msg in st.session_state.messages:
     avatar = "🥒" if msg["role"] == "assistant" else "🧑‍💻"
     with st.chat_message(msg["role"], avatar=avatar):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Ответьте на уточнение..." if st.session_state.pending_session_id else "Опишите задачу..."):
-    if is_changed:
-        st.toast("Вы не сохранили JSON!", icon="⚠️")
-        st.stop()
-    if not st.session_state.json_valid:
-        st.toast("Ошибка в JSON!", icon="❌")
-        st.stop()
-
+if prompt := st.chat_input(
+    "Ответьте на уточнение..." if st.session_state.pending_session_id else "Опишите задачу...",
+    disabled=chat_disabled,
+):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🧑‍💻"): st.markdown(prompt)
 
@@ -160,7 +152,9 @@ if prompt := st.chat_input("Ответьте на уточнение..." if st.s
             with st.spinner("Ocean Cucumber думает..."):
                 data = call_backend(prompt)
         except Exception as e:
-            st.error(f"Ошибка: {e}")
+            error_message = f"Ошибка: {e}"
+            st.error(error_message)
+            st.session_state.messages.append({"role": "assistant", "content": f"**{error_message}**"})
             st.stop()
 
         err = data.get("error")
