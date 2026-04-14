@@ -41,6 +41,7 @@ type GenerateRequest struct {
 
 type GenerateResponse struct {
 	Code             string `json:"code,omitempty"`
+	Answer           string `json:"answer,omitempty"`
 	Question         string `json:"question,omitempty"`
 	SessionID        string `json:"session_id,omitempty"`
 	Error            string `json:"error,omitempty"`
@@ -202,7 +203,11 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store, lockTTL, 
 		case "clarification_needed":
 			out.Question = wrapTextTransport(state.GetClarificationQuestion())
 		case "done":
-			out.Code = wrapLuaTransport(state.GetCode())
+			if state.GetAssistantText() != "" {
+				out.Answer = wrapTextTransport(state.GetAssistantText())
+			} else {
+				out.Code = wrapLuaTransport(state.GetCode())
+			}
 		case "error":
 			out.Error = state.GetError()
 			out.ValidationError = state.GetValidationError()
@@ -212,7 +217,9 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store, lockTTL, 
 				out.RepairCount = 0
 			}
 		default:
-			if state.GetCode() != "" {
+			if state.GetAssistantText() != "" {
+				out.Answer = wrapTextTransport(state.GetAssistantText())
+			} else if state.GetCode() != "" {
 				out.Code = wrapLuaTransport(state.GetCode())
 			} else if state.GetClarificationQuestion() != "" {
 				out.Question = wrapTextTransport(state.GetClarificationQuestion())
@@ -227,7 +234,7 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store, lockTTL, 
 			}
 		}
 
-		if out.Error != "" && out.Code == "" && out.Question == "" {
+		if out.Error != "" && out.Code == "" && out.Answer == "" && out.Question == "" {
 			ctx.JSON(http.StatusUnprocessableEntity, out)
 			return
 		}

@@ -61,3 +61,4 @@ class PipelineState(TypedDict, total=False):
     # ── Phase / output ───────────────────────────────────────────────
     phase: str  # "running" | "clarification_needed" | "done" | "error"
     error: Optional[str]
+    assistant_text: Optional[str]

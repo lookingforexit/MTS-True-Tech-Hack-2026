@@ -258,7 +258,8 @@ def _merge_clarification_history(
     input_path: str,
     return_value: str,
     clarification_history: list[dict] | None,
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, bool]:
+    input_path_answer_seen = False
     for entry in clarification_history or []:
         answer = _clean_text(entry.get("answer"))
         if not answer:
@@ -276,6 +277,7 @@ def _merge_clarification_history(
         if target != "input_path":
             continue
 
+        input_path_answer_seen = True
         resolved_path = _extract_canonical_path(answer)
         if resolved_path:
             input_path = resolved_path
@@ -285,10 +287,10 @@ def _merge_clarification_history(
             input_path = INPUT_PATH_NOT_APPLICABLE
             continue
 
-        if not input_path:
+        if not input_path or input_path == INPUT_PATH_NEEDS_CLARIFICATION:
             input_path = answer
 
-    return goal, input_path, return_value
+    return goal, input_path, return_value, input_path_answer_seen
 
 
 def resolve_input_path(
@@ -401,7 +403,7 @@ def evaluate_spec(
     transformation = _clean_text(raw_spec.get("transformation")) or "as requested by user"
     return_value = _clean_text(raw_spec.get("return_value"))
 
-    goal, input_path, return_value = _merge_clarification_history(
+    goal, input_path, return_value, input_path_answer_seen = _merge_clarification_history(
         goal=goal,
         input_path=input_path,
         return_value=return_value,
@@ -427,6 +429,8 @@ def evaluate_spec(
         normalized_input_path = resolved_path
     elif no_input_confirmed and not needs_contextual_input:
         normalized_input_path = INPUT_PATH_NOT_APPLICABLE
+    elif input_path_answer_seen:
+        normalized_input_path = input_path or INPUT_PATH_NOT_APPLICABLE
     elif needs_contextual_input:
         normalized_input_path = INPUT_PATH_NEEDS_CLARIFICATION
     else:

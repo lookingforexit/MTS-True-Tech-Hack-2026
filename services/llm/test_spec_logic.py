@@ -187,6 +187,31 @@ def test_case_8_input_path_answer_absent_is_respected_for_self_contained_task():
     assert spec["clarification_required"] is False
 
 
+def test_case_9_input_path_clarification_answer_without_canonical_path_is_accepted():
+    spec = evaluate_spec(
+        {
+            "goal": "Count target values in items",
+            "input_path": INPUT_PATH_NEEDS_CLARIFICATION,
+            "output_type": "single_value",
+            "transformation": "Count matching values",
+            "return_value": "number of matching items",
+        },
+        request="Посчитай, сколько раз target_value встречается в массиве items.",
+        raw_context=_context({"vars": {"items": ["apple"], "target_value": "apple"}, "initVariables": {}}),
+        dialog_language="ru",
+        clarification_history=[
+            {
+                "question": "Какой точный Lua path у items в контексте, например `wf.vars.items`?",
+                "answer": "используй массив items",
+                "target": "input_path",
+            }
+        ],
+    )
+
+    assert spec["input_path"] == "wf.vars.items"
+    assert spec["clarification_required"] is False
+
+
 def test_case_10_invalid_spec_json_fallback_is_safe():
     spec = evaluate_spec(
         None,

@@ -22,6 +22,7 @@ from langgraph.graph import START, StateGraph
 
 from context_normalizer import normalize_context_safe
 from prompts import (
+    ASSISTANT_AGENT_PROMPT,
     SPEC_AGENT_PROMPT,
     make_generate_prompt,
     make_repair_prompt,
@@ -72,6 +73,69 @@ _checker = LuaCheckerClient(
     port=int(os.environ.get("LUA_CHECKER_PORT", "50053")),
     rpc_timeout_s=_float_env("LUA_CHECKER_RPC_TIMEOUT_SECONDS", 5),
 )
+
+
+def _context_has_data(raw_context: dict | None) -> bool:
+    if not isinstance(raw_context, dict):
+        return False
+
+    wf = raw_context.get("wf") if "wf" in raw_context else raw_context
+    if not isinstance(wf, dict):
+        return bool(wf)
+
+    for key in ("vars", "initVariables"):
+        value = wf.get(key)
+        if isinstance(value, dict) and value:
+            return True
+        if value not in (None, {}, []):
+            return True
+    return any(key not in ("vars", "initVariables") for key in wf)
+
+
+def _is_assistant_request(request: str, raw_context: dict | None) -> bool:
+    """Return True for ordinary questions that should not enter code generation."""
+    if _context_has_data(raw_context):
+        return False
+
+    lowered = request.strip().lower()
+    if not lowered:
+        return False
+
+    code_markers = (
+        "напиши код",
+        "сгенерируй код",
+        "создай код",
+        "верни lua",
+        "lua код",
+        "lua-код",
+        "script",
+        "скрипт",
+        "write code",
+        "generate code",
+        "create code",
+        "return lua",
+        "lua script",
+    )
+    if any(marker in lowered for marker in code_markers):
+        return False
+
+    assistant_markers = (
+        "что такое",
+        "почему",
+        "как работает",
+        "как сделать",
+        "как лучше",
+        "объясни",
+        "расскажи",
+        "подскажи",
+        "what is",
+        "why",
+        "how does",
+        "how to",
+        "explain",
+        "tell me",
+    )
+    return "?" in lowered or any(marker in lowered for marker in assistant_markers)
 
 
 def detect_language(text: str) -> str:
@@ -161,6 +225,23 @@ def _call_spec_agent(user_text: str) -> tuple[str, dict | None, bool]:
         return text, None, True
 
 
+def _call_assistant_agent(request: str, dialog_language: str) -> str:
+    messages = [
+        SystemMessage(content=ASSISTANT_AGENT_PROMPT),
+        HumanMessage(content=f"dialog_language: {dialog_language}\n\nUser question:\n{request}"),
+    ]
+
+    logger.info("═══════════════════════════════════════════════════════")
+    logger.info("[ASSISTANT AGENT] INPUT:\n%s", request)
+
+    response = _llm_zero.invoke(messages)
+    text = str(response.content).strip()
+
+    logger.info("[ASSISTANT AGENT] OUTPUT:\n%s", text)
+    logger.info("═══════════════════════════════════════════════════════")
+    return text
+
+
 # Nodes
 
 def extract_context_node(state: PipelineState) -> PipelineState:
@@ -197,6 +278,19 @@ def spec_node(state: PipelineState) -> PipelineState:
     )
     logger.info("Spec generated: %s", spec.get("goal", "unknown"))
     return {"spec_json": json.dumps(spec, ensure_ascii=False)}
+
+
+def assistant_node(state: PipelineState) -> PipelineState:
+    answer = _call_assistant_agent(
+        request=state.get("request", ""),
+        dialog_language=state.get("dialog_language", "en"),
+    )
+    return {
+        "assistant_text": answer,
+        "code": None,
+        "validation_success": True,
+        "phase": "done",
+    }
 
 
 def update_spec_node(state: PipelineState) -> PipelineState:
@@ -384,6 +478,8 @@ def validate_node(state: PipelineState) -> PipelineState:
 def route_entry(state: PipelineState) -> str:
     if state.get("clarifying"):
         return "update_spec"
+    if _is_assistant_request(state.get("request", ""), state.get("raw_context")):
+        return "assistant"
     return "spec"
 
 
@@ -409,6 +505,7 @@ def build_graph():
 
     # Nodes
     builder.add_node("extract_context", extract_context_node)
+    builder.add_node("assistant", assistant_node)
     builder.add_node("spec", spec_node)
     builder.add_node("update_spec", update_spec_node)
     builder.add_node("clarifier", clarifier_node)
@@ -418,6 +515,7 @@ def build_graph():
     # Edges
     builder.add_edge(START, "extract_context")
     builder.add_conditional_edges("extract_context", route_entry, {
+        "assistant": "assistant",
         "spec": "spec",
         "update_spec": "update_spec",
     })

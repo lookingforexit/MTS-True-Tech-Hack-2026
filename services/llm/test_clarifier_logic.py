@@ -88,6 +88,31 @@ def test_clarifier_blocks_repeated_question_without_new_information():
     assert decision["question"] is None
 
 
+def test_clarifier_accepts_input_path_answer_without_exact_path_when_context_resolves_it():
+    spec = evaluate_spec(
+        {
+            "goal": "Sort users by age descending",
+            "input_path": INPUT_PATH_NEEDS_CLARIFICATION,
+            "output_type": "filtered_array",
+            "transformation": "Sort by age descending",
+            "return_value": "sorted users array",
+        },
+        request="Sort users by age descending",
+        raw_context={"wf": {"vars": {"users": [{"age": 30}]}, "initVariables": {}}},
+        dialog_language="en",
+        clarification_history=[
+            {
+                "question": "What is the exact Lua path to the users data, for example `wf.vars.users`?",
+                "answer": "use the users array",
+                "target": "input_path",
+            }
+        ],
+    )
+
+    assert spec["input_path"] == "wf.vars.users"
+    assert build_clarifier_decision(spec)["status"] == "approved"
+
+
 def test_clarifier_does_not_ask_about_edge_cases_or_structure_details():
     spec = evaluate_spec(
         {

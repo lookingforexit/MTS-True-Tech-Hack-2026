@@ -115,6 +115,32 @@ def test_invalid_spec_json_fallback_never_approves_generation(monkeypatch):
     assert clarified["clarification_question"] == "What exactly should the final Lua code do?"
 
 
+def test_empty_context_question_uses_assistant_path(monkeypatch):
+    monkeypatch.setattr(graph, "_llm_zero", _DummyLLM("Замыкание хранит доступ к внешним переменным."))
+
+    state = {
+        "request": "Что такое замыкание в Lua?",
+        "raw_context": {"wf": {"vars": {}, "initVariables": {}}},
+        "dialog_language": "ru",
+    }
+
+    assert graph.route_entry(state) == "assistant"
+    result = graph.assistant_node(state)
+    assert result["phase"] == "done"
+    assert result["assistant_text"] == "Замыкание хранит доступ к внешним переменным."
+    assert result["code"] is None
+
+
+def test_empty_context_code_request_still_uses_code_pipeline():
+    state = {
+        "request": "Напиши Lua код, который возвращает 10 число Фибоначчи",
+        "raw_context": {"wf": {"vars": {}, "initVariables": {}}},
+        "dialog_language": "ru",
+    }
+
+    assert graph.route_entry(state) == "spec"
+
+
 def test_repeat_clarification_becomes_controlled_error():
     state = {
         "request": "Sort users by age descending",

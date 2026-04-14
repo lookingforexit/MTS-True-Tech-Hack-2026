@@ -51,6 +51,7 @@ def _proto_state_to_dict(msg) -> PipelineState:
         "validation_error": msg.validation_error if msg.HasField("validation_error") else None,
         "phase": msg.phase,
         "error": msg.error if msg.HasField("error") else None,
+        "assistant_text": msg.assistant_text if msg.HasField("assistant_text") else None,
     }
 
 
@@ -76,6 +77,7 @@ def _dict_to_proto_state(state: dict) -> llm_pb2.PipelineState:
         "validation_output",
         "validation_error",
         "error",
+        "assistant_text",
     ):
         value = state.get(field)
         if value is not None:
@@ -152,6 +154,7 @@ def _make_initial_state(session_id: str, request_text: str,
         "validation_error": None,
         "phase": "running",
         "error": None,
+        "assistant_text": None,
         "dialog_language": dialog_language,
     }
 
