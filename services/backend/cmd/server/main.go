@@ -7,7 +7,6 @@ import (
 	"backend/internal/session"
 	"fmt"
 	"log"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc"
@@ -29,13 +28,13 @@ func main() {
 		}
 	}(conn)
 
-	stateStore := session.NewStore(cfg.RedisAddr, 1020*time.Second)
+	stateStore := session.NewStore(cfg.RedisAddr, cfg.PipelineStateTTL)
 
 	llmClient := llmv1.NewLLMServiceClient(conn)
 
 	router := gin.Default()
 	router.GET("/health", handler.HealthHandler(stateStore))
-	router.POST("/generate", handler.Handler(llmClient, stateStore))
+	router.POST("/generate", handler.Handler(llmClient, stateStore, cfg.SessionLockTTL, cfg.LLMRequestTimeout))
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("listening on %s, LLM at %s", addr, cfg.LLMAddr)

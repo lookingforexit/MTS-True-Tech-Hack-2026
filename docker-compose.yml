@@ -83,11 +83,14 @@ services:
       - GIN_MODE=release
       - LLM_ADDR=llm:50051
       - REDIS_ADDR=redis:6379
+      - PIPELINE_STATE_TTL=24h
+      - SESSION_LOCK_TTL=20m
+      - LLM_REQUEST_TIMEOUT=15m
     depends_on:
       llm:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
@@ -102,6 +105,12 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   lua-checker:
     build:

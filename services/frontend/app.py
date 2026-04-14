@@ -3,6 +3,8 @@ import os
 import requests
 import streamlit as st
 
+from transport import parse_transport_content
+
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://backend:8080")
 
 # --- Конфигурация страницы ---
@@ -129,18 +131,6 @@ def call_backend(prompt: str) -> dict:
     resp.raise_for_status()
     return resp.json()
 
-def unwrap_lua(raw: str) -> str:
-    if raw and raw.startswith("lua{") and raw.endswith("}lua"):
-        return raw[4:-4].strip()
-    return raw.strip() if raw else ""
-
-def unwrap_text(raw: str) -> str:
-    if raw and raw.startswith("text{") and raw.endswith("}text"):
-        return raw[5:-5].strip()
-    return raw.strip() if raw else ""
-
-
-
 # ==========================================
 # ОСНОВНОЙ ЧАТ
 # ==========================================
@@ -174,8 +164,10 @@ if prompt := st.chat_input("Ответьте на уточнение..." if st.s
             st.stop()
 
         err = data.get("error")
-        code_str = unwrap_lua(data.get("code"))
-        question = unwrap_text(data.get("question"))
+        code_kind, code_content = parse_transport_content(data.get("code"))
+        question_kind, question_content = parse_transport_content(data.get("question"))
+        code_str = code_content.strip() if code_kind in ("lua", "plain") else ""
+        question = question_content.strip() if question_kind in ("text", "plain") else ""
         session_id = data.get("session_id")
 
         ans_parts =[]
