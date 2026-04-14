@@ -120,7 +120,7 @@ func looksLikeClarificationAnswer(prompt, question string) bool {
 	return len(strings.Fields(trimmed)) <= 6
 }
 
-func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.HandlerFunc {
+func Handler(client llmv1.LLMServiceClient, stateStore *session.Store, lockTTL, requestTimeout time.Duration) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var req GenerateRequest
 		if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -152,7 +152,7 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 			}
 		}
 
-		rpcCtx, cancel := context.WithTimeout(ctx.Request.Context(), 900*time.Second)
+		rpcCtx, cancel := context.WithTimeout(ctx.Request.Context(), requestTimeout)
 		defer cancel()
 
 		var resp *llmv1.SessionResponse
@@ -164,7 +164,7 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 			return
 		}
 
-		locked, err := stateStore.Lock(rpcCtx, req.SessionID, lockToken, 20*time.Minute)
+		locked, err := stateStore.Lock(rpcCtx, req.SessionID, lockToken, lockTTL)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -174,7 +174,9 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 			return
 		}
 		defer func() {
-			_ = stateStore.Unlock(context.Background(), req.SessionID, lockToken)
+			unlockCtx, unlockCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer unlockCancel()
+			_ = stateStore.Unlock(unlockCtx, req.SessionID, lockToken)
 		}()
 
 		pipelineState, err := stateStore.Get(rpcCtx, req.SessionID)

@@ -4,3 +4,4 @@
 *gen
 *.idea
 /services/tests/reports/*
+/tests/reports/*

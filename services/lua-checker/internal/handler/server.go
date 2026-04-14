@@ -9,20 +9,19 @@ import (
 
 type Server struct {
 	checker.UnimplementedLuaCheckerServer
-	checker *service.LuaChecker
 }
 
 func NewServer() *Server {
-	return &Server{
-		checker: &service.LuaChecker{},
-	}
+	return &Server{}
 }
 
 func (s *Server) Check(ctx context.Context, req *checker.CheckRequest) (*checker.CheckResponse, error) {
-	s.checker.Validate(req.GetScript())
+	luaChecker := &service.LuaChecker{}
+	luaChecker.Validate(req.GetScript())
+	violations := append([]string(nil), luaChecker.Errors...)
 
 	return &checker.CheckResponse{
-		Valid:      len(s.checker.Errors) == 0,
-		Violations: s.checker.Errors,
+		Valid:      len(violations) == 0,
+		Violations: violations,
 	}, nil
 }
