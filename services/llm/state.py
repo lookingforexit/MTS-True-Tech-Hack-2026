@@ -7,7 +7,7 @@ State machine phases (``phase`` field):
     error                 — pipeline failed with an unrecoverable error
 
 Clarification lifecycle:
-    1. clarifier_node detects ambiguity → sets clarification_question + is_ambiguous
+    1. shared spec logic detects ambiguity → sets clarification_question + is_ambiguous
     2. route_after_clarifier routes to clarification_needed terminal node
     3. External caller provides answer via StartOrContinue or AnswerClarification
     4. Resume sets clarification_answer + phase=running + clarifying=True
@@ -25,9 +25,10 @@ class PipelineState(TypedDict, total=False):
 
     Pipeline stages:
         1. Prepare context  — parse raw JSON, pass through directly
-        2. Spec-agent       — extract structured spec from request + context
-        3. Clarifier-agent  — approve spec or ask one clarification question
-        4. Generator-agent  — produce Lua code (with repair loop on validation failure)
+        2. Spec-agent       — extract a raw structured spec from request + context
+        3. Shared policy    — normalize the spec and decide whether one clarification is needed
+        4. Clarifier-agent  — ask at most one question derived from the shared policy
+        5. Generator-agent  — produce Lua code (with repair loop on validation failure)
     """
 
     # ── Input ────────────────────────────────────────────────────────
@@ -45,7 +46,7 @@ class PipelineState(TypedDict, total=False):
     clarifying: bool                   # True when re-running after a clarification answer
 
     # ── Spec ─────────────────────────────────────────────────────────
-    spec_json: Optional[str]
+    spec_json: Optional[str]           # normalized JSON spec, includes return_value and clarification metadata
     spec_approved: bool
 
     # ── Code generation ──────────────────────────────────────────────

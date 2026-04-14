@@ -32,29 +32,39 @@ Output format — return exactly one JSON object and nothing else:
   "input_path": string,
   "output_type": string,
   "transformation": string,
-  "edge_cases": [string],
-  "need_clarification": boolean,
-  "clarification_reason": string|null
+  "return_value": string
 }
 
 Field definitions:
 - goal: concise description of what the code should do
-- input_path: the exact Lua path to the input data, e.g. "wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES" or "wf.vars.parsedCsv"
+- input_path:
+  - exact Lua path to the input data, e.g. "wf.vars.user" or "wf.initVariables.recallTime"
+  - "__INPUT_PATH_NOT_APPLICABLE__" when the task does not depend on context input data
+  - "__INPUT_PATH_NEEDS_CLARIFICATION__" when the task depends on context input data but the exact path is unknown
 - output_type: what the code should return — "transformed_table", "filtered_array", "single_value", "new_structure"
 - transformation: description of the transformation — e.g. "ensure all items fields are arrays", "filter by Discount or Markdown non-empty"
-- edge_cases: list of edge cases to handle — e.g. "items is not an array", "null values", "empty input"
-- need_clarification: true ONLY if critical information is missing and the request is genuinely ambiguous
-- clarification_reason: why clarification is needed (only if need_clarification is true)
+- return_value: short and specific description of what the final Lua code must return
 
 CRITICAL: when to ask for clarification
-- The input path cannot be determined from the context
-- The user's request is genuinely ambiguous (e.g. "process the data" with no specifics)
-- The requested operation doesn't match any reasonable transformation pattern
+- Your target is not a perfectly complete specification.
+- Your target is a specification that is precise enough for the coding agent.
+- Only leave ambiguity when one of these blockers is genuinely unresolved:
+  1. The final goal is unclear
+  2. The return value cannot be inferred
+  3. The task depends on context input data but the exact input path cannot be inferred
 
 Do NOT ask for clarification for:
 - Standard transformations (ensure array, filter by field, map/transform values, merge structures)
 - Style preferences
-- Anything a competent programmer can implement with reasonable defaults
+- Edge cases
+- nil / null / empty values
+- fallback values
+- invalid formats
+- error handling
+- type checks
+- names of helper fields or variables
+- structure details like color / value / left / right / parent
+- anything a competent programmer can implement with reasonable defaults
 
 EXAMPLES OF GOOD SPECS:
 
@@ -64,9 +74,7 @@ Example 1 — "Ensure items are always arrays":
   "input_path": "wf.vars.json.IDOC.ZCDF_HEAD.ZCDF_PACKAGES",
   "output_type": "transformed_table",
   "transformation": "Convert non-array items into single-element arrays",
-  "edge_cases": ["items is a single object, not array", "items is nil", "package has no items"],
-  "need_clarification": false,
-  "clarification_reason": null
+  "return_value": "ZCDF_PACKAGES where each package.items value is represented as an array"
 }
 
 Example 2 — "Filter by Discount or Markdown":
@@ -75,24 +83,35 @@ Example 2 — "Filter by Discount or Markdown":
   "input_path": "wf.vars.parsedCsv",
   "output_type": "filtered_array",
   "transformation": "Keep rows where Discount or Markdown is non-empty and non-null",
-  "edge_cases": ["empty array", "all rows filtered out", "null vs empty string"],
-  "need_clarification": false,
-  "clarification_reason": null
+  "return_value": "array of rows where Discount or Markdown has a value"
+}
+
+Example 3 — "Return the 10th Fibonacci number":
+{
+  "goal": "Compute the 10th Fibonacci number",
+  "input_path": "__INPUT_PATH_NOT_APPLICABLE__",
+  "output_type": "single_value",
+  "transformation": "Calculate the Fibonacci sequence up to the 10th element",
+  "return_value": "10th Fibonacci number"
 }
 
 Rules:
 1. Return raw JSON only — no markdown fences, no explanations.
-2. Be conservative about asking questions. If a competent programmer can implement it directly, set need_clarification to false.
+2. Be conservative about unresolved fields. If a competent programmer can implement it directly, fill the spec and do not invent blockers.
 3. Fill in reasonable defaults whenever possible.
 4. Keep the goal concise and actionable.
 5. When clarification dialogue is provided, merge the user's answer into the spec. The answer is the source of truth for the user's real intent.
 6. Base the spec only on real fields visible in the provided context. Do not invent paths, helper libraries, or missing schema.
 7. The main root paths are `wf.vars` and `wf.initVariables`. Prefer them when selecting `input_path`.
 8. Do not propose JsonPath, `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, `loadstring`, or any external libraries.
+9. `return_value` is mandatory and must describe the actual expected result, not just the type.
+10. If the task does not depend on context data, use `__INPUT_PATH_NOT_APPLICABLE__`.
+11. If the task depends on context data but the exact path is unknown, use `__INPUT_PATH_NEEDS_CLARIFICATION__`.
 """
 
-# ── Clarifier-agent ────────────────────────────────────────────────────
-# Reviews the spec and either approves or asks ONE specific question.
+# ── Clarifier policy reference ─────────────────────────────────────────
+# The runtime clarifier is deterministic, but this prompt documents the
+# expected policy for the role and remains available as a fallback.
 
 CLARIFIER_AGENT_PROMPT = """\
 You are a clarifier that reviews a JSON specification for a Lua code generation task.
@@ -113,18 +132,35 @@ Rules:
 
 3. Ask at most ONE question. Do not list multiple issues.
 
-4. Do NOT ask about:
+4. The ONLY valid blockers are:
+   - goal
+   - return_value
+   - input_path
+
+5. Blocker priority:
+   - first goal
+   - then return_value
+   - then input_path
+
+6. Do NOT ask about:
+   - edge cases
+   - nil / null / empty values
+   - fallback behavior
+   - invalid formats
+   - error handling
+   - type checks
+   - names of helper fields or variables
+   - structure details such as color / value / left / right / parent
    - style preferences
    - optimization preferences
    - anything with a reasonable default
-   - standard transformations (filter, map, ensure array, etc.)
 
-5. Language policy:
+7. Language policy:
    The "question" field must be written in the language given by dialog_language:
    - if dialog_language == "ru", write the clarification question in Russian
    - if dialog_language == "en", write the clarification question in English
 
-6. Return raw JSON only — no markdown fences, no explanations.
+8. Return raw JSON only — no markdown fences, no explanations.
 """
 
 # ── Generator-agent ────────────────────────────────────────────────────
@@ -220,7 +256,8 @@ The code must be runnable as-is — end with `return <result>`.
 
 2. Environment
 - Input data is available via `wf.vars` and/or `wf.initVariables`
-- Use the exact input_path from the spec
+- If `input_path` is a real Lua path, use that exact path from the spec
+- If `input_path` is `__INPUT_PATH_NOT_APPLICABLE__`, do not force context access
 - `_utils.array.new()` is available for creating new arrays
 - `_utils.array.markAsArray(arr)` is available for marking tables as arrays
 
@@ -244,7 +281,8 @@ The code must be runnable as-is — end with `return <result>`.
   - ~= for not-equal
   - and / or / not for boolean logic
   - tables are 1-indexed
-- Handle edge cases from the spec gracefully.
+- Use `goal`, `transformation`, and `return_value` as the source of truth for behavior.
+- Choose routine implementation details yourself without asking about edge cases.
 
 5. Style policy
 - Keep code minimal, clear, and correct.

@@ -22,11 +22,11 @@ from langgraph.graph import START, StateGraph
 
 from context_normalizer import normalize_context_safe
 from prompts import (
-    CLARIFIER_AGENT_PROMPT,
     SPEC_AGENT_PROMPT,
     make_generate_prompt,
     make_repair_prompt,
 )
+from spec_logic import build_clarifier_decision, evaluate_spec, load_spec_json
 from state import PipelineState
 from checker_client import LuaCheckerClient
 from validator_client import LuaValidatorClient
@@ -152,13 +152,11 @@ def _call_spec_agent(user_text: str) -> tuple[str, dict]:
     except (json.JSONDecodeError, KeyError) as e:
         logger.warning("Spec-agent did not return valid JSON: %s — %s", text, e)
         fallback = {
-            "goal": "unknown",
-            "input_path": "wf.vars",
+            "goal": "",
+            "input_path": "",
             "output_type": "return_value",
             "transformation": "as requested by user",
-            "edge_cases": [],
-            "need_clarification": False,
-            "clarification_reason": None,
+            "return_value": "",
         }
         return json.dumps(fallback, ensure_ascii=False), fallback
 
@@ -188,9 +186,15 @@ def spec_node(state: PipelineState) -> PipelineState:
         context_raw=state.get("context"),
         clarification_history=None,          # first run — no history yet
     )
-    spec_json_str, spec = _call_spec_agent(user_text)
+    _, raw_spec = _call_spec_agent(user_text)
+    spec = evaluate_spec(
+        raw_spec,
+        request=state["request"],
+        raw_context=state.get("raw_context"),
+        dialog_language=state.get("dialog_language", "en"),
+    )
     logger.info("Spec generated: %s", spec.get("goal", "unknown"))
-    return {"spec_json": spec_json_str}
+    return {"spec_json": json.dumps(spec, ensure_ascii=False)}
 
 
 def update_spec_node(state: PipelineState) -> PipelineState:
@@ -200,50 +204,41 @@ def update_spec_node(state: PipelineState) -> PipelineState:
         context_raw=state.get("context"),
         clarification_history=state.get("clarification_history") or [],
     )
-    spec_json_str, spec = _call_spec_agent(user_text)
+    _, raw_spec = _call_spec_agent(user_text)
+    spec = evaluate_spec(
+        raw_spec,
+        request=state["request"],
+        raw_context=state.get("raw_context"),
+        dialog_language=state.get("dialog_language", "en"),
+    )
     logger.info("Spec updated: %s", spec.get("goal", "unknown"))
     return {
-        "spec_json": spec_json_str,
+        "spec_json": json.dumps(spec, ensure_ascii=False),
         "clarification_answer": None,   # consumed
         "clarifying": False,             # consumed
     }
 
 
 def clarifier_node(state: PipelineState) -> PipelineState:
-    spec_json = state.get("spec_json", "")
-    dialog_language = state.get("dialog_language", "en")
-
-    user_text = f"Specification:\n{spec_json}\n\ndialog_language: {dialog_language}"
-
-    messages = [
-        SystemMessage(content=CLARIFIER_AGENT_PROMPT),
-        HumanMessage(content=user_text),
-    ]
-
     logger.info("═══════════════════════════════════════════════════════")
-    logger.info("[CLARIFIER AGENT] INPUT:\n%s", user_text)
-
-    response = _llm_zero.invoke(messages)
-    text = response.content
-
-    logger.info("[CLARIFIER AGENT] OUTPUT:\n%s", text)
+    spec = load_spec_json(
+        state.get("spec_json"),
+        request=state.get("request", ""),
+        raw_context=state.get("raw_context"),
+        dialog_language=state.get("dialog_language", "en"),
+    )
+    decision = build_clarifier_decision(spec)
+    logger.info("[CLARIFIER] NORMALIZED SPEC:\n%s", json.dumps(spec, ensure_ascii=False))
     logger.info("═══════════════════════════════════════════════════════")
 
-    try:
-        parsed = _parse_json_response(text)
-        status = parsed.get("status", "approved")
-        question = parsed.get("question")
-    except (json.JSONDecodeError, KeyError) as e:
-        logger.warning("Clarifier did not return valid JSON: %s — %s", text, e)
-        status = "approved"
-        question = None
-
-    if status == "question" and question:
+    if decision["status"] == "question" and decision["question"]:
+        question = decision["question"]
         logger.info("Clarifier asks: %s", question)
         return {
             "is_ambiguous": True,
             "clarification_question": question,
             "spec_approved": False,
+            "spec_json": json.dumps(spec, ensure_ascii=False),
         }
 
     logger.info("Clarifier approved the spec")
@@ -251,6 +246,7 @@ def clarifier_node(state: PipelineState) -> PipelineState:
         "is_ambiguous": False,
         "clarification_question": None,
         "spec_approved": True,
+        "spec_json": json.dumps(spec, ensure_ascii=False),
     }
 
 
