@@ -50,6 +50,13 @@ type GenerateResponse struct {
 	ValidationError  string `json:"validation_error,omitempty"`
 }
 
+func rephraseTaskQuestion(dialogLanguage string) string {
+	if strings.ToLower(dialogLanguage) == "ru" {
+		return "Не удалось надёжно сгенерировать корректный код. Пожалуйста, переформулируйте задачу точнее."
+	}
+	return "I couldn't reliably generate correct code. Please rephrase the task more precisely."
+}
+
 func wrapLuaTransport(raw string) string {
 	if raw == "" {
 		return ""
@@ -253,6 +260,11 @@ func Handler(client llmv1.LLMServiceClient, stateStore *session.Store) gin.Handl
 			out.RepairCount = state.GetGenerationAttempt() - 1
 			if out.RepairCount < 0 {
 				out.RepairCount = 0
+			}
+			if state.GetClarificationQuestion() != "" {
+				out.Question = wrapTextTransport(state.GetClarificationQuestion())
+			} else {
+				out.Question = wrapTextTransport(rephraseTaskQuestion(state.GetDialogLanguage()))
 			}
 		default:
 			if state.GetCode() != "" {

@@ -37,3 +37,12 @@ func TestLooksLikeClarificationAnswer(t *testing.T) {
 		t.Fatal("new task reformulation should not be treated as clarification answer")
 	}
 }
+
+func TestRephraseTaskQuestion(t *testing.T) {
+	if got := rephraseTaskQuestion("ru"); got == "" {
+		t.Fatal("expected Russian rephrase question")
+	}
+	if got := rephraseTaskQuestion("en"); got == "" {
+		t.Fatal("expected English rephrase question")
+	}
+}
