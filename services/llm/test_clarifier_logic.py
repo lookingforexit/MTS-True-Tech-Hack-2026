@@ -40,7 +40,7 @@ def test_clarifier_asks_only_about_return_value():
 
     decision = build_clarifier_decision(spec)
     assert decision["status"] == "question"
-    assert decision["question"] == "Что должна возвращать функция поиска: индекс, сам элемент или `true/false`?"
+    assert decision["question"] == "Что именно должен возвращать итоговый Lua-код?"
 
 
 def test_clarifier_asks_only_about_input_path():

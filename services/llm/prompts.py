@@ -270,6 +270,8 @@ The code must be runnable as-is — end with `return <result>`.
 - Generate valid standard Lua 5.4 code.
 - Use only direct Lua access through `wf.vars` or `wf.initVariables`.
 - Rely only on real fields present in the provided context and spec. Do not invent paths.
+- CRITICAL REQUIREMENT: DO EVERYTHING MANUALLY IN PLAIN LUA.
+- CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
 - Do not use JsonPath.
 - Do not use external libraries.
 - Do not use `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, or `loadstring`.
@@ -296,6 +298,7 @@ Code is language-neutral. If comments or user-facing strings are necessary, matc
 Do not mix languages.
 
 Final instruction:
+!!! CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
 Return only raw Lua code.
 """
 
@@ -385,6 +388,8 @@ Do not use Markdown. Do not use code fences. Do not add explanations.
 
 3. Correctness constraints
 - Generate valid standard Lua 5.4 code.
+- CRITICAL REQUIREMENT: DO EVERYTHING MANUALLY IN PLAIN LUA.
+- CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
 - Avoid non-Lua operators: +=, -=, *=, /=, &&, ||, !=
 - Use Lua idioms:
   - string concatenation with ..
@@ -408,12 +413,14 @@ Do not use Markdown. Do not use code fences. Do not add explanations.
 7. LowCode restrictions
 - Keep using the current Lua runtime. Do not rely on newer runtime features.
 - Use only direct Lua access through `wf.vars` or `wf.initVariables`.
+- CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
 - Do not use JsonPath.
 - Do not use external libraries.
 - Do not use `require`, `package.loadlib`, `loadfile`, `dofile`, `load`, or `loadstring`.
 - Do not invent helper libraries or unsupported runtime APIs.
 
 Final instruction:
+!!! CRITICAL REQUIREMENT: DO NOT IMPORT, REQUIRE, LOAD, OR DELEGATE WORK TO ANY LIBRARY UNDER ANY CIRCUMSTANCES.
 Return only raw Lua code.
 """
 

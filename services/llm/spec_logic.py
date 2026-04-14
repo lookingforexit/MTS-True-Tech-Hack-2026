@@ -233,14 +233,6 @@ def _build_question(target: ClarificationTarget, request: str, goal: str, dialog
         )
 
     if target == "return_value":
-        search_markers = ("бинар", "поиск", "search", "find")
-        haystack = f"{request} {goal}".lower()
-        if any(marker in haystack for marker in search_markers):
-            return (
-                "Что должна возвращать функция поиска: индекс, сам элемент или `true/false`?"
-                if is_ru
-                else "What should the search function return: index, the element itself, or `true/false`?"
-            )
         return (
             "Что именно должен возвращать итоговый Lua-код?"
             if is_ru
