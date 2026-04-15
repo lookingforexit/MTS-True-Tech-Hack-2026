@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package lua_validator.v1;
+
+option go_package = "backend/gen/lua_validator/v1;luavalidatorv1";
+
+// LuaValidatorService validates Lua code by actually running it.
+service LuaValidatorService {
+  // Validate runs the given Lua code and returns the result.
+  rpc Validate(ValidateRequest) returns (ValidateResponse);
+}
+
+message ValidateRequest {
+  string code = 1;
+  // Max execution time in milliseconds (default: 5000).
+  optional int32 timeout_ms = 2;
+  // JSON string with environment variables to set before execution.
+  // Keys and values must both be strings.
+  string env_vars = 3;
+}
+
+message ValidateResponse {
+  bool success = 1;
+  // Combined stdout from the execution.
+  string output = 2;
+  // Error message if execution failed.
+  string error = 3;
+  // Exit code (0 on success).
+  int32 exit_code = 4;
+  // Wall-clock execution time in milliseconds.
+  int32 exec_time_ms = 5;
+}

@@ -1,0 +1,16 @@
+# Зависимости: pyproject.toml — источник правды для uv.
+# Обновить requirements.txt и uv.lock:
+#   uv lock && uv export --format requirements-txt --no-dev --no-hashes -o requirements.txt
+[project]
+name = "frontend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.56.0",
+    "requests>=2.31.0",
+]
+
+[tool.setuptools]
+py-modules = ["app", "transport"]

@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package llm.v1;
+
+option go_package = "backend/gen/llm/v1;llmv1";
+
+service LLMService {
+  rpc StartOrContinue(SessionRequest) returns (SessionResponse);
+
+  rpc AnswerClarification(AnswerRequest) returns (SessionResponse);
+}
+
+message ClarificationEntry {
+  string question = 1;
+  string answer = 2;
+  string target = 3;
+}
+
+message PipelineState {
+  string session_id = 1;
+  string request = 2;
+  optional string context = 3;
+  optional string raw_context_json = 4;
+  string dialog_language = 5;
+
+  optional string clarification_answer = 6;
+  optional string clarification_question = 7;
+  repeated ClarificationEntry clarification_history = 8;
+  bool is_ambiguous = 9;
+  bool clarifying = 10;
+
+  optional string spec_json = 11;
+  bool spec_approved = 12;
+
+  optional string code = 13;
+  int32 generation_attempt = 14;
+
+  bool validation_success = 15;
+  optional string validation_output = 16;
+  optional string validation_error = 17;
+
+  string phase = 18;
+  optional string error = 19;
+}
+
+message SessionRequest {
+  // Pipeline state
+  PipelineState pipeline_state = 1;
+}
+
+message AnswerRequest {
+  string session_id = 1;
+  // User's answer to the clarification question.
+  string answer = 2;
+  // Pipeline state
+  PipelineState pipeline_state = 3;
+}
+
+message SessionResponse {
+  // Pipeline state
+  PipelineState pipeline_state = 1;
+}
+
+enum SessionPhase {
+  PHASE_UNSPECIFIED = 0;
+  CLARIFICATION_NEEDED = 1;
+  CODE_GENERATED = 2;
+  DONE = 3;
+  ERROR = 4;
+}

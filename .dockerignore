@@ -1,0 +1,32 @@
+# Version control
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.venv
+*.venv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose*.yml
+*.dockerfile
+
+# Test artifacts
+tests/reports
+
+# Auto-generated files (regenerated during build)
+requirements.txt
+services/*/gen

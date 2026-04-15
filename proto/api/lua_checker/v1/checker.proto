@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package lua_checker.v1;
+
+option go_package = "lua-checker/gen/lua_checker/v1;luacheckerv1";
+
+service LuaChecker {
+    rpc Check(CheckRequest) returns (CheckResponse);
+}
+
+message CheckRequest {
+    string script = 1;
+}
+
+message CheckResponse {
+    bool valid = 1;
+    repeated string violations = 2;
+}

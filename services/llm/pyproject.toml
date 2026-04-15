@@ -1,0 +1,27 @@
+# Зависимости: pyproject.toml — источник правды для uv.
+# Обновить requirements.txt и uv.lock:
+#   uv lock && uv export --format requirements-txt --no-dev --no-hashes -o requirements.txt
+[project]
+name = "llm"
+version = "0.1.0"
+description = "LLM service with multi-agent LangGraph pipeline (spec/clarify/test/generate/validate/repair/rank)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "grpcio>=1.68.0",
+    "grpcio-tools>=1.68.0",
+    "grpcio-reflection>=1.68.0",
+    "langgraph>=0.2.0",
+    "langchain-ollama>=0.2.0",
+    "langchain-core>=0.3.0",
+]
+
+[tool.setuptools]
+py-modules = ["main", "graph", "state", "prompts", "spec_logic", "validator_client", "checker_client", "context_normalizer"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0"]

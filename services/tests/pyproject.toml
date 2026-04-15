@@ -1,0 +1,15 @@
+# Обновить uv.lock:
+#   uv lock
+[project]
+name = "task-repo-tests"
+version = "0.1.0"
+description = "Pytest integration tests (LLM gRPC + validator gRPC)"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest>=8.0.0",
+    "requests>=2.31.0",
+    "pytest-html>=4.1.0",
+    "grpcio>=1.68.0",
+    "grpcio-tools>=1.68.0",
+    "protobuf>=6.31.0",
+]
