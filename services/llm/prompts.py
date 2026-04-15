@@ -127,6 +127,36 @@ Example 3 — "Return the 10th Fibonacci number":
   "return_value": "10th Fibonacci number"
 }
 
+Example 4 — "Sum numbers from context":
+{
+  "goal": "Sum all numbers in the numbers array",
+  "task_mode": "context_aware",
+  "input_path": "wf.vars.numbers",
+  "output_type": "single_value",
+  "transformation": "Add every numeric value in the array",
+  "return_value": "sum of all numbers"
+}
+
+Example 5 — "Return object keys":
+{
+  "goal": "Return all keys from the config object",
+  "task_mode": "context_aware",
+  "input_path": "wf.vars.config",
+  "output_type": "filtered_array",
+  "transformation": "Collect every key from the object into an array",
+  "return_value": "array containing all config keys"
+}
+
+Example 6 — "Check if a number is even":
+{
+  "goal": "Check whether the number is even",
+  "task_mode": "standalone",
+  "input_path": "__INPUT_PATH_NOT_APPLICABLE__",
+  "output_type": "single_value",
+  "transformation": "Use modulo division to test evenness",
+  "return_value": "boolean flag indicating whether the number is even"
+}
+
 Rules:
 1. Return raw JSON only — no markdown fences, no explanations.
 2. Be conservative about unresolved fields. If a competent programmer can implement it directly, fill the spec and do not invent blockers.
@@ -315,6 +345,65 @@ for _, order in ipairs(wf.vars.orders or {}) do
     end
 end
 return _utils.array.markAsArray(filtered)
+
+---
+
+Example 4 — Sum a numeric array from context:
+Request: "Посчитай сумму всех чисел в массиве numbers"
+Input: wf.vars.numbers
+
+Solution:
+local numbers = wf.vars.numbers or {}
+local total = 0
+for _, value in ipairs(numbers) do
+    if type(value) == "number" then
+        total = total + value
+    end
+end
+return total
+
+---
+
+Example 5 — Return object keys:
+Request: "Получить массив всех ключей из объекта config"
+Input: wf.vars.config
+
+Solution:
+local config = wf.vars.config or {}
+local keys = _utils.array.new()
+for key, _ in pairs(config) do
+    table.insert(keys, key)
+end
+return _utils.array.markAsArray(keys)
+
+---
+
+Example 6 — Map array objects to a new structure:
+Request: "Верни массив пользователей только с полями id и name"
+Input: wf.vars.users
+
+Solution:
+local users = wf.vars.users or {}
+local result = _utils.array.new()
+for _, user in ipairs(users) do
+    if type(user) == "table" then
+        table.insert(result, {
+            id = user.id,
+            name = user.name
+        })
+    end
+end
+return _utils.array.markAsArray(result)
+
+---
+
+Example 7 — Standalone boolean result:
+Request: "Напиши Lua код, который проверяет, является ли число 42 четным"
+Input: no workflow context
+
+Solution:
+local value = 42
+return value % 2 == 0
 """
 
 _GENERATE_BASE_PROMPT = f"""\
@@ -469,6 +558,35 @@ for _, item in ipairs(items) do
     end
 end
 return result
+
+---
+
+Example 3 — Fix nil indexing by guarding the input object:
+Broken code:
+local user = wf.vars.user
+return user.profile.email
+
+Validation error:
+attempt to index a nil value
+
+Repaired code:
+local user = wf.vars.user or {}
+local profile = user.profile or {}
+return profile.email
+
+---
+
+Example 4 — Preserve standalone mode during repair:
+Broken code:
+local value = wf.vars.value
+return value % 2 == 0
+
+Spec task_mode:
+standalone
+
+Repaired code:
+local value = 42
+return value % 2 == 0
 
 Rules:
 
