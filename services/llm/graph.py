@@ -98,7 +98,7 @@ def _sample_scalar(value: object) -> object:
     return _describe_value(value)
 
 
-def _build_context_schema(raw_context: dict | None, *, max_paths: int = 80) -> str | None:
+def _build_context_schema(raw_context: dict | None, *, max_paths: int = 50) -> str | None:
     if not isinstance(raw_context, dict):
         return None
 
