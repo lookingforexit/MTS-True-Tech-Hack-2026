@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 MODEL="qwen2.5-coder:7b-instruct-q4_K_M"

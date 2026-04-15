@@ -21,7 +21,8 @@ RUN uv pip install --system ./services/llm
 
 RUN cd services/llm && make generate-python PROTO_ROOT=/app/proto
 
-RUN chmod +x ./services/llm/startup.sh
+RUN sed -i 's/\r$//' ./services/llm/startup.sh \
+    && chmod +x ./services/llm/startup.sh
 
 WORKDIR /app/services/llm
 
@@ -29,4 +30,4 @@ ENV PYTHONPATH=/app/services/llm/gen:/app/services/llm
 
 EXPOSE 50051
 
-CMD ["./startup.sh"]
+CMD ["sh", "./startup.sh"]
